@@ -11,7 +11,7 @@
 
 * { box-sizing: border-box; }
 html { background: var(--paper); scroll-behavior: smooth; }
-body { margin: 0; color: var(--ink); background: var(--paper); font-family: var(--font-geist-sans), Arial, sans-serif; }
+body { margin: 0; color: var(--ink); background: var(--paper); font-family: var(--font-geist-sans), Arial, sans-serif; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 button, a { font: inherit; }
 button { cursor: pointer; }
 
@@ -268,6 +268,101 @@ button { cursor: pointer; }
 .decision-drawer footer button { padding: 10px 13px; border-radius: 3px; font-size: 9px; }
 .secondary-action { border: 1px solid #cdd5d0; background: #fff; color: #4f5d57; }
 .primary-action { border: 1px solid #173d33; background: #173d33; color: #fff; }
+
+/* Readability pass: operational text should remain legible at a glance. */
+.nav-item span { font-size: 10px; }
+.connection { font-size: 11px; line-height: 1.4; }
+.user-block strong { font-size: 13px; }
+.user-block small { font-size: 11px; }
+.incident-id { font-size: 11px; }
+.topbar-meta { font-size: 12px; }
+.topbar-meta button { font-size: 11px; }
+.strip-label { font-size: 10px; }
+.hazard-tab span { font-size: 12px; }
+.hazard-tab small { font-size: 10px; }
+.compound-status { font-size: 10px; }
+.eyebrow, .panel-kicker { font-size: 10px; line-height: 1.35; }
+.heading-copy { font-size: 15px; line-height: 1.55; }
+.severity-card span { font-size: 10px; }
+.severity-card small { font-size: 12px; line-height: 1.35; }
+.metric-row span { font-size: 10px; }
+.metric-row small { font-size: 12px; line-height: 1.35; }
+.connector-intro span { font-size: 9px; }
+.connector-intro strong { font-size: 16px; }
+.connector strong { font-size: 11px; }
+.connector small { font-size: 9px; }
+.connector time { font-size: 9px; }
+.panel-header div > strong { font-size: 19px; }
+.panel-header .panel-kicker { font-size: 9px; }
+.map-controls button { font-size: 11px; }
+.risk-area { font-size: 10px; }
+.place, .place strong { font-size: 12px; }
+.place small { font-size: 10px; }
+.map-time span { font-size: 9px; }
+.map-time strong { font-size: 11px; }
+.map-legend { font-size: 10px; }
+.query-shape span { font-size: 9px; }
+.query-toolbar > span { font-size: 9px; }
+.query-toolbar button { font-size: 10px; }
+.exposure-result span { font-size: 9px; }
+.exposure-result strong { font-size: 14px; }
+.exposure-result small { font-size: 10px; line-height: 1.35; }
+.forecast-control strong { font-size: 14px; }
+.forecast-track div { font-size: 9px; }
+.forecast-confidence small { max-width: 72px; font-size: 9px; }
+.live-pulse { font-size: 10px; }
+.agent-number { font-size: 10px; }
+.agent-row strong { font-size: 13px; }
+.agent-row small { font-size: 11px; }
+.agent-status { font-size: 10px; }
+.decision-label { font-size: 10px; }
+.decision-card p { font-size: 12px; line-height: 1.55; }
+.decision-card button { font-size: 12px; }
+.collaboration-note span { font-size: 9px; }
+.collaboration-note strong { font-size: 12px; }
+.collaboration-note p { font-size: 10px; line-height: 1.55; }
+.collaboration-note small { font-size: 9px; line-height: 1.4; }
+.signal-title button { font-size: 11px; }
+.signal-row time { font-size: 10px; }
+.signal-row strong { font-size: 13px; }
+.signal-row p { font-size: 11px; line-height: 1.5; }
+.signal-row > span { font-size: 10px; }
+.signal-row div > small { font-size: 9px; line-height: 1.4; }
+.graph-status { font-size: 10px; }
+.flow-step { font-size: 9px; }
+.flow-node > strong { font-size: 17px; }
+.flow-node > p { font-size: 10px; line-height: 1.55; }
+.flow-node > small { font-size: 9px; line-height: 1.5; }
+.source-record strong { font-size: 10px; }
+.source-record small { font-size: 9px; line-height: 1.35; }
+.action-gate { font-size: 9px; }
+.stage-index { font-size: 9px; }
+.action-stage > span { font-size: 9px; }
+.action-stage > strong { font-size: 16px; }
+.action-stage > p { font-size: 10px; line-height: 1.55; }
+.action-stage > small { font-size: 9px; }
+.measure-intro span { font-size: 9px; }
+.measure-intro strong { font-size: 16px; }
+.measure-row article > span { font-size: 9px; }
+.measure-row article em { font-size: 10px; }
+.measure-row article small { font-size: 9px; line-height: 1.45; }
+.decision-drawer header p { font-size: 13px; }
+.packet-summary span { font-size: 9px; }
+.packet-summary strong { font-size: 14px; }
+.packet-summary small { font-size: 9px; }
+.option-card > p { font-size: 12px; line-height: 1.55; }
+.option-card dt { font-size: 9px; }
+.option-card dd { font-size: 11px; line-height: 1.5; }
+.option-card > small { font-size: 10px; line-height: 1.4; }
+.posture { font-size: 9px; }
+.decision-drawer footer p { font-size: 10px; }
+.decision-drawer footer button { font-size: 11px; }
+
+.connector-intro, .connector { min-height: 68px; }
+.panel-header { min-height: 72px; }
+.agent-row { min-height: 74px; }
+.flow-node { min-height: 198px; }
+.action-stage > p { min-height: 34px; }
 
 @keyframes overlay-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes drawer-in { from { transform: translateX(24px); opacity: .6; } to { transform: translateX(0); opacity: 1; } }
