@@ -5,6 +5,12 @@
 Osprey is an operational coordination system that uses AI. The incident is the
 top-level durable object; agent runs are contributors to it.
 
+The product direction and design guardrails are defined in
+`docs/product-direction.md`. Architecture decisions must preserve its core
+boundary: Osprey connects existing operational systems and governs the journey
+from evidence to decision to action; it does not replace source GIS, weather,
+asset, CCTV, or sensor platforms.
+
 Agents produce proposals:
 
 - observations
@@ -43,6 +49,12 @@ incident state. Agents do not silently rewrite accepted truth.
 - Decision
 - Approval
 - AuditEvent
+- Connector
+- SourceRecord
+- ExposureQuery
+- Task
+- Communication
+- OutcomeMeasure
 
 Every record should carry an incident identifier, actor identity, creation
 time, source or parent relationship, and version where applicable.
@@ -56,9 +68,16 @@ time, source or parent relationship, and version where applicable.
 - Tool inputs, outputs, failures, and retries are auditable.
 - Model text alone cannot grant authority.
 - Demo and simulation actions are visibly distinguished from live actions.
+- Connector health and evidence freshness are visible to operators.
+- A decision, its tasks, communications, acknowledgements, and outcomes retain
+  one traceable authorisation lineage.
+- Operational measures include an explicit baseline and measurement window.
 
 ## Current implementation
 
 The first slice is intentionally frontend-led and uses typed representative
-incident data. Its contracts establish the vocabulary that later persistence
-and orchestration work will implement.
+incident data. It now demonstrates the complete product direction: hazard
+lenses, connector status, spatial and temporal queries, provenance-rich
+evidence, agent challenge, decision packets, human gates, action lineage, and
+operational measurement. Its contracts establish the vocabulary that later
+persistence and orchestration work will implement.

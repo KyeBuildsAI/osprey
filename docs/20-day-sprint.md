@@ -15,7 +15,10 @@ Exit: Osprey is recognisable, navigable, and builds reliably.
 
 - Add incident creation and selection.
 - Add persistent incident state.
-- Replace the illustrative map with real map primitives.
+- Replace the illustrative map with real map primitives, exposure queries, and
+  a time-based forecast control.
+- Establish hazard-specific views and a compound-incident lens.
+- Add the first versioned weather, GIS, asset, and sensor connector contracts.
 - Add evidence detail, filtering, confidence, source, and freshness.
 - Add operational timeline and decision workspace interactions.
 
@@ -26,6 +29,7 @@ Exit: a user can enter an incident and understand what is happening.
 - Introduce the durable Temporal incident workflow.
 - Add specialist-agent execution and structured outputs.
 - Add challenge and disagreement handling.
+- Materialise the source-to-claim-to-challenge evidence graph.
 - Scaffold the Python weather-analysis service.
 - Process one deterministic NetCDF rainfall fixture.
 
@@ -34,8 +38,11 @@ Exit: agent and scientific findings flow into the shared operational picture.
 ## Days 13–16 — Human authority and audit
 
 - Add courses of action with assumptions and trade-offs.
+- Generate governed decision packets rather than standalone recommendations.
 - Add request-analysis, edit, reject, and approve decisions.
 - Bind approvals to action payloads and incident-state versions.
+- Link approved decisions to owned tasks, governed communications, and outcome
+  checks.
 - Add a reconstructable audit timeline.
 - Add explicit simulation boundaries.
 
@@ -46,6 +53,8 @@ Exit: the complete safe decision journey works end to end.
 - Add representative incident fixtures and expected findings.
 - Test unsupported claims, stale evidence, disagreements, and tool failures.
 - Test interruption and workflow resumption.
+- Establish baselines for response time, decision quality, and operator
+  workload.
 - Address accessibility and responsive behaviour.
 
 Exit: the primary journey is dependable and explainable.

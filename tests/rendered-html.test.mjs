@@ -22,8 +22,14 @@ test("server-renders the Osprey command room", async () => {
   assert.match(html, /<title>Osprey/);
   assert.match(html, /Storm Ember/);
   assert.match(html, /ACTIVE INCIDENT/);
-  assert.match(html, /OPERATIONAL MAP/);
-  assert.match(html, /AGENT TEAM/);
-  assert.match(html, /Review options/);
+  assert.match(html, /Hazard-specific operational views/i);
+  assert.match(html, /LIVE SOURCE MESH/);
+  assert.match(html, /EXPOSURE QUERY/);
+  assert.match(html, /TIME-BASED FORECAST/);
+  assert.match(html, /COLLABORATIVE AGENT TEAM/);
+  assert.match(html, /INCIDENT EVIDENCE GRAPH/);
+  assert.match(html, /DECISION-TO-OUTCOME CHAIN/);
+  assert.match(html, /Review decision packet/);
+  assert.match(html, /OPERATIONAL IMPACT/);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape/);
 });

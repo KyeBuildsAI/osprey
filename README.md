@@ -6,15 +6,25 @@ Osprey helps specialist agents and human incident commanders build a shared
 operational picture, challenge uncertain evidence, compare courses of action,
 and retain human approval over consequential decisions.
 
+Its locked product direction is to connect existing operational systems and
+govern the journey from evidence to decision to action and outcome. It is not a
+replacement GIS or another collection of disaster dashboards. See
+[`docs/product-direction.md`](docs/product-direction.md).
+
 ## Current milestone
 
 The repository currently contains the first command-room vertical slice:
 
 - incident overview and severity
 - operational risk map
-- specialist-agent status
-- evidence and change timeline
-- human decision review
+- hazard-specific operational lenses
+- map-based exposure queries and time-based forecasting
+- connector health and source freshness
+- specialist-agent collaboration and challenge
+- provenance-rich evidence graph and timeline
+- governed decision packets and human approval gates
+- decision-to-task-to-communication-to-outcome lineage
+- response-time, decision-quality, and workload measures
 
 The current incident is representative demonstration data. Durable incident
 state, Temporal orchestration, live data sources, and Python weather analysis

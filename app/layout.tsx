@@ -10,15 +10,15 @@ export async function generateMetadata(): Promise<Metadata> {
   const requestHeaders = await headers();
   const host = requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host") ?? "localhost:3000";
   const protocol = requestHeaders.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
-  const socialImage = `${protocol}://${host}/og.png`;
-  const title = "Osprey — Extreme-weather incident command";
-  const description = "An AI-native incident command room for extreme-weather operations.";
+  const socialImage = `${protocol}://${host}/og-evidence-command.png`;
+  const title = "Osprey — Evidence-led incident command";
+  const description = "An agentic incident-command layer that turns verified operational evidence into governed decisions, coordinated actions, and measurable outcomes.";
 
   return {
     title,
     description,
     icons: { icon: "/favicon.svg", shortcut: "/favicon.svg" },
-    openGraph: { title, description, images: [{ url: socialImage, width: 1731, height: 909, alt: "Osprey incident command map" }] },
+    openGraph: { title, description, images: [{ url: socialImage, width: 1717, height: 916, alt: "Osprey evidence-to-action incident command" }] },
     twitter: { card: "summary_large_image", title, description, images: [socialImage] },
   };
 }
