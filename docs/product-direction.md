@@ -68,3 +68,22 @@ evidence graph, specialist and challenge agents, governed decision packets, a
 decision-to-outcome chain, and operational performance measures. The data and
 external effects remain representative until the corresponding integrations,
 persistence, orchestration, policy, and evaluation layers are implemented.
+
+## Documentation governance
+
+This document is the authoritative product charter. Its eight principles must
+remain traceable in:
+
+- [`architecture.md`](architecture.md), which defines the components, data
+  contracts, workflows, safety controls, and measures required to implement
+  them;
+- [`20-day-sprint.md`](20-day-sprint.md), which assigns each capability to
+  delivery days, acceptance criteria, scope guardrails, and the definition of
+  done; and
+- the repository [`README`](../README.md), which states the product boundary,
+  current implementation status, and documentation precedence.
+
+Any proposal to remove, weaken, or reverse a locked principle requires an
+explicit product decision and coordinated updates to all three documents. New
+features must state which principle they advance and where they enter the core
+operational journey.
