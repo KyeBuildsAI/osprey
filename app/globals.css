@@ -100,12 +100,41 @@ button { cursor: pointer; }
 .water-ribbon > div > strong { margin-top: 7px; font: 500 20px Georgia, serif; }
 .water-ribbon > div > small { max-width: 230px; margin-top: 4px; overflow: hidden; color: #73847e; font-size: 9px; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
 
-.water-depth-panel { margin: 28px 36px 0; }
+.water-depth-panel, .rainfall-depth-panel { margin: 28px 36px 0; }
 .water-health { padding: 7px 9px; color: #596f68; border: 1px solid #d6e1dd; background: #fff; font-size: 9px; font-weight: 730; letter-spacing: .09em; }
 .water-health i { width: 6px; height: 6px; margin-right: 7px; display: inline-block; border-radius: 50%; background: #d89f3d; }
 .water-health-live i { background: var(--green); }
 .water-notices { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 7px; }
 .water-notices span { padding: 7px 9px; color: #865f28; border: 1px solid #ead8b9; background: #faf3e5; font-size: 9px; }
+.rainfall-summary-grid { margin-top: 14px; display: grid; grid-template-columns: repeat(5,minmax(0,1fr)); border-top: 1px solid var(--line); border-left: 1px solid var(--line); background: #fff; }
+.rainfall-summary-grid > div { min-width: 0; padding: 14px 15px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.rainfall-summary-grid span, .rainfall-summary-grid strong, .rainfall-summary-grid small { display: block; }
+.rainfall-summary-grid span { color: #6f817a; font-size: 8px; font-weight: 740; letter-spacing: .11em; }
+.rainfall-summary-grid strong { margin-top: 8px; color: #294f5b; font: 500 22px Georgia, serif; }
+.rainfall-summary-grid small { margin-top: 5px; color: #84908b; font-size: 8px; }
+.rainfall-boundary-note { margin-top: 10px; padding: 14px 16px; display: grid; grid-template-columns: 155px minmax(0,1fr) 285px; gap: 18px; align-items: center; color: #315563; border: 1px solid #c9dce1; background: #edf5f7; }
+.rainfall-boundary-note > span { align-self: start; color: #337386; font-size: 8px; font-weight: 760; letter-spacing: .12em; }
+.rainfall-boundary-note > span i { width: 6px; height: 6px; margin-right: 7px; display: inline-block; border-radius: 50%; background: #438fa5; box-shadow: 0 0 0 3px rgba(67,143,165,.12); }
+.rainfall-boundary-note strong { display: block; font: 500 15px Georgia, serif; }
+.rainfall-boundary-note p { margin: 5px 0 0; color: #60767e; font-size: 10px; line-height: 1.5; }
+.rainfall-boundary-note > small { padding-left: 16px; color: #697d83; border-left: 1px solid #c5d8dd; font: 8px/1.65 var(--font-geist-mono); }
+.rainfall-point-grid { margin-top: 14px; display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); border-top: 1px solid var(--line); border-left: 1px solid var(--line); background: #fff; }
+.rainfall-point-card { min-width: 0; min-height: 190px; padding: 16px; display: flex; flex-direction: column; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.rainfall-point-card header { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #71827c; font: 8px var(--font-geist-mono); }
+.rainfall-point-card header b { padding: 4px 5px; color: #2d7158; background: #e5f1eb; font-size: 8px; letter-spacing: .06em; }
+.rainfall-point-card h3 { min-height: 38px; margin: 14px 0 12px; font: 500 18px/1.12 Georgia, serif; }
+.rainfall-point-card > div { display: grid; grid-template-columns: repeat(4,1fr); border-top: 1px solid #e4e9e6; border-left: 1px solid #e4e9e6; }
+.rainfall-point-card > div span { min-width: 0; padding: 8px 6px; border-right: 1px solid #e4e9e6; border-bottom: 1px solid #e4e9e6; }
+.rainfall-point-card > div small, .rainfall-point-card > div strong { display: block; }
+.rainfall-point-card > div small { color: #84908b; font-size: 7px; letter-spacing: .08em; }
+.rainfall-point-card > div strong { margin-top: 5px; color: #325761; font: 500 11px Georgia, serif; white-space: nowrap; }
+.rainfall-point-card footer { margin-top: auto; padding-top: 12px; color: #82908a; font-size: 8px; }
+.rainfall-screen-monitor { background: #fffaf0; }
+.rainfall-screen-monitor header b { color: #8a5d12; background: #f7ecd3; }
+.rainfall-screen-elevated { background: #fcf0eb; }
+.rainfall-screen-elevated header b { color: #9d3f28; background: #f7dfd7; }
+.rainfall-screen-unavailable { background: #f6f7f5; }
+.rainfall-screen-unavailable header b { color: #737e79; background: #e9ecea; }
 .threshold-cache-note { margin-top: 14px; padding: 14px 16px; display: grid; grid-template-columns: 155px minmax(0,1fr) 210px; gap: 18px; align-items: center; color: #33564d; border: 1px solid #cdded8; background: #edf6f2; }
 .threshold-cache-note > span { align-self: start; color: #2f745e; font-size: 8px; font-weight: 760; letter-spacing: .12em; }
 .threshold-cache-note > span i { width: 6px; height: 6px; margin-right: 7px; display: inline-block; border-radius: 50%; background: #d7a040; box-shadow: 0 0 0 3px rgba(215,160,64,.12); }
@@ -180,7 +209,7 @@ button { cursor: pointer; }
 .source-health-heading { display: flex; align-items: end; justify-content: space-between; gap: 20px; }
 .source-health-heading h2 { margin: 6px 0 0; font: 500 24px Georgia, serif; letter-spacing: -.02em; }
 .source-health-heading > span { padding: 7px 9px; color: #526a61; border: 1px solid #d3dfda; background: #fff; font-size: 9px; font-weight: 730; letter-spacing: .08em; text-transform: uppercase; }
-.source-health-grid { margin-top: 13px; display: grid; grid-template-columns: repeat(5,minmax(0,1fr)); border-top: 1px solid var(--line); border-left: 1px solid var(--line); background: #fff; }
+.source-health-grid { margin-top: 13px; display: grid; grid-template-columns: repeat(auto-fit,minmax(165px,1fr)); border-top: 1px solid var(--line); border-left: 1px solid var(--line); background: #fff; }
 .source-health-card { min-width: 0; min-height: 245px; padding: 15px; display: flex; flex-direction: column; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 .source-health-card header { display: flex; justify-content: space-between; gap: 8px; color: #718079; font-size: 8px; }
 .source-health-card header > span { font-weight: 760; letter-spacing: .09em; }
@@ -454,16 +483,23 @@ button { cursor: pointer; }
 .query-toolbar > div { display: flex; gap: 5px; }
 .query-toolbar button { flex: 1; padding: 7px; border: 1px solid rgba(172,199,189,.18); color: #a9bdb5; background: transparent; font-size: 10px; }
 .query-toolbar button:hover, .query-toolbar .query-selected { color: #18342c; border-color: #f0c369; background: #f0c369; }
+.rainfall-toolbar { position: absolute; z-index: 2; top: 112px; right: 15px; width: 260px; padding: 10px; color: #b8cbc4; border: 1px solid rgba(168,198,186,.2); background: rgba(8,31,25,.86); }
+.rainfall-toolbar > span { display: block; margin-bottom: 8px; color: #8faaa0; font-size: 9px; letter-spacing: .14em; }
+.rainfall-toolbar > div { display: grid; grid-template-columns: repeat(4,1fr); gap: 5px; }
+.rainfall-toolbar button { padding: 7px 4px; border: 1px solid rgba(172,199,189,.18); color: #a9bdb5; background: transparent; font-size: 9px; }
+.rainfall-toolbar button:hover, .rainfall-toolbar .rainfall-selected { color: #fff; border-color: #4895a8; background: #397f91; }
+.rainfall-toolbar small { margin-top: 8px; display: block; color: #8ea8a1; font: 8px/1.4 var(--font-geist-mono); }
 .exposure-result { position: absolute; z-index: 2; left: 16px; bottom: 16px; max-width: 390px; padding: 13px 15px; border-left: 2px solid #e7b451; color: #fff; background: rgba(8,31,25,.88); }
 .exposure-result span, .exposure-result strong, .exposure-result small { display: block; }
 .exposure-result span { color: #91aba1; font-size: 9px; letter-spacing: .14em; }
 .exposure-result strong { margin-top: 6px; font: 500 15px Georgia, serif; }
 .exposure-result small { margin-top: 5px; color: #93a9a1; font-size: 10px; }
-.map-legend { position: absolute; z-index: 2; right: 14px; bottom: 14px; padding: 9px 11px; display: flex; gap: 14px; color: #bdd0c9; background: rgba(8,31,25,.8); font-size: 10px; }
+.map-legend { position: absolute; z-index: 2; right: 14px; bottom: 92px; padding: 9px 11px; display: flex; gap: 10px; color: #bdd0c9; background: rgba(8,31,25,.8); font-size: 9px; }
 .map-legend span { display: flex; align-items: center; gap: 6px; }
 .map-legend i { width: 8px; height: 8px; display: block; border-radius: 2px; }
 .legend-high { background: #de5b36; }
 .legend-medium { background: #dca542; }
+.legend-rainfall { background: linear-gradient(135deg,#62b3c3,#2e6f91 55%,#d69247); }
 .legend-water { background: #55938c; }
 .legend-normal { background: #65b889; }
 .legend-terrain { background: linear-gradient(135deg, #c7a462 0 50%, #274b3e 50%); }
@@ -516,6 +552,8 @@ button { cursor: pointer; }
 
 @media (max-width: 1180px) {
   .source-health-grid { grid-template-columns: repeat(3,minmax(0,1fr)); }
+  .rainfall-summary-grid { grid-template-columns: repeat(3,minmax(0,1fr)); }
+  .rainfall-point-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .forecast-control { grid-template-columns: minmax(220px,.9fr) minmax(260px,1.2fr) minmax(260px,1fr); }
   .forecast-confidence { display: none; }
   .weather-ribbon { grid-template-columns: 1.2fr .7fr 1.2fr repeat(2, .75fr); }
@@ -560,6 +598,8 @@ button { cursor: pointer; }
   .threshold-cache-note > small { grid-column: 1 / -1; padding: 9px 0 0; border-top: 1px solid #c9d9d3; border-left: 0; }
   .fema-freshness-note { grid-template-columns: 130px 1fr; }
   .fema-freshness-note > small { grid-column: 1 / -1; padding: 9px 0 0; border-top: 1px solid #c6d9de; border-left: 0; }
+  .rainfall-boundary-note { grid-template-columns: 130px 1fr; }
+  .rainfall-boundary-note > small { grid-column: 1 / -1; padding: 9px 0 0; border-top: 1px solid #c6d9de; border-left: 0; }
   .feature-inspector { height: auto; min-height: 400px; border-top: 1px solid var(--line); border-left: 0; }
   .feature-inspector > footer { margin-top: 0; }
   .source-health-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
@@ -589,11 +629,15 @@ button { cursor: pointer; }
   .condition { grid-column: 1 / -1; border-top: 1px solid var(--line); border-right: 0 !important; }
   .shared-state, .agent-section, .operations-grid, .timeline-panel { margin-left: 18px; margin-right: 18px; }
   .source-health-panel { margin-left: 18px; margin-right: 18px; }
-  .water-depth-panel { margin-left: 18px; margin-right: 18px; }
+  .water-depth-panel, .rainfall-depth-panel { margin-left: 18px; margin-right: 18px; }
   .threshold-cache-note { grid-template-columns: 1fr; gap: 8px; }
   .threshold-cache-note > small { grid-column: auto; }
   .fema-freshness-note { grid-template-columns: 1fr; gap: 8px; }
   .fema-freshness-note > small { grid-column: auto; }
+  .rainfall-summary-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .rainfall-boundary-note { grid-template-columns: 1fr; gap: 8px; }
+  .rainfall-boundary-note > small { grid-column: auto; }
+  .rainfall-point-grid { grid-template-columns: 1fr; }
   .evidence-graph, .action-panel { margin-left: 18px; margin-right: 18px; }
   .operational-workspace { margin-left: 18px; margin-right: 18px; }
   .shared-state > div { overflow-x: auto; padding-bottom: 4px; }
@@ -607,6 +651,7 @@ button { cursor: pointer; }
   .map-surface { height: 470px; }
   .geospatial-map-shell { height: 570px; }
   .query-toolbar { top: auto; right: auto; left: 14px; bottom: 92px; }
+  .rainfall-toolbar { top: 112px; right: 14px; left: 14px; width: auto; }
   .query-shape { left: 13%; width: 240px; }
   .map-legend { display: none; }
   .exposure-result { right: 14px; max-width: none; }

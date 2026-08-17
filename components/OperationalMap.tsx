@@ -12,12 +12,13 @@ import {
 import mapLibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import type { Feature, FeatureCollection, GeoJsonObject, Geometry, Point, Polygon } from "geojson";
 import type { AlertGeometry, InfrastructureAsset, WeatherAlert } from "@/lib/intelligence";
+import type { RainfallIntelligence, RainfallPeriod, RainfallScreening } from "@/lib/rainfall";
 import type { WaterIntelligence } from "@/lib/water-types";
 
 type MapLayer = "Risk" | "Impact" | "Assets";
 type ExposureQuery = "Radius" | "Polygon" | "Assets";
 type HazardId = "compound" | "flood" | "wind" | "heat";
-type ContextLayer = "Roads" | "Water" | "Rail" | "Places" | "Terrain" | "Flood zones";
+type ContextLayer = "Roads" | "Water" | "Rail" | "Places" | "Terrain" | "Flood zones" | "Rainfall";
 
 export interface MapFeatureSelection {
   id: string;
@@ -31,14 +32,26 @@ export interface MapFeatureSelection {
   detail: string;
   elevationM: number | null;
   elevationStatus: "loading" | "ready" | "unavailable";
+  rainfallIn: Record<RainfallPeriod, number | null> | null;
+  rainfallScreening: RainfallScreening;
+  rainfallStatus: "loading" | "ready" | "unavailable";
 }
 
 const HOUSTON: [number, number] = [-95.3698, 29.7604];
 const BASEMAP_STYLE = "https://tiles.openfreemap.org/styles/bright";
 const TERRAIN_TILES = "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png";
-const CONTEXT_LAYERS: ContextLayer[] = ["Roads", "Water", "Rail", "Places", "Terrain", "Flood zones"];
+const MRMS_SERVICE = "https://mapservices.weather.noaa.gov/raster/rest/services/obs/mrms_qpe/ImageServer";
+const RAINFALL_PERIODS: RainfallPeriod[] = [1, 3, 6, 24];
+const CONTEXT_LAYERS: ContextLayer[] = ["Roads", "Water", "Rail", "Places", "Terrain", "Flood zones", "Rainfall"];
 const OSPREY_LAYER_PREFIX = "osprey-";
 setWorkerUrl(mapLibreWorkerUrl);
+
+function rainfallTileUrl(period: RainfallPeriod) {
+  const code = String(period).padStart(2, "0");
+  const mosaicRule = encodeURIComponent(JSON.stringify({ where: `name='conus_QPE_${code}H'` }));
+  const renderingRule = encodeURIComponent(JSON.stringify({ rasterFunction: `rft_${period}hr` }));
+  return `${MRMS_SERVICE}/exportImage?bbox={bbox-epsg-3857}&bboxSR=3857&size=256,256&imageSR=3857&format=png32&transparent=true&f=image&mosaicRule=${mosaicRule}&renderingRule=${renderingRule}`;
+}
 
 const OPERATIONAL_POLYGON: Polygon = {
   type: "Polygon",
@@ -118,6 +131,8 @@ function assetCollection(assets: InfrastructureAsset[]): FeatureCollection<Point
         exposure: asset.exposure,
         criticality: asset.criticality,
         elevation: asset.elevationM == null ? "Elevation unavailable" : `${Math.round(asset.elevationM)} m USGS elevation`,
+        rainfall: `${asset.rainfallIn[1] ?? "—"} in / 1h · ${asset.rainfallIn[24] ?? "—"} in / 24h`,
+        rainfallScreening: asset.rainfallScreening,
       },
     })),
   };
@@ -258,6 +273,7 @@ function identifyFeature(
     feature ? property(feature, "reading") : "",
     feature ? property(feature, "trend") : "",
     feature ? property(feature, "threshold", "ZONE_SUBTY") : "",
+    feature ? property(feature, "rainfall") : "",
     classValue ? titleCase(classValue) : "",
     structure ? titleCase(structure) : "",
     feature ? titleCase(feature.sourceLayer ?? feature.layer.id) : "Ground elevation sample",
@@ -284,6 +300,9 @@ function identifyFeature(
     detail: detailParts.join(" · ") || category,
     elevationM: null,
     elevationStatus: "loading",
+    rainfallIn: null,
+    rainfallScreening: "UNAVAILABLE",
+    rainfallStatus: "loading",
   };
 }
 
@@ -298,6 +317,7 @@ export function OperationalMap({
   alerts,
   assets,
   water,
+  rainfall,
   layer,
   forecastHour,
   forecastValidAt,
@@ -308,6 +328,7 @@ export function OperationalMap({
   alerts: WeatherAlert[];
   assets: InfrastructureAsset[];
   water: WaterIntelligence;
+  rainfall: RainfallIntelligence;
   layer: MapLayer;
   forecastHour: number;
   forecastValidAt: string | null;
@@ -318,11 +339,12 @@ export function OperationalMap({
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const selectionSequenceRef = useRef(0);
-  const latestRef = useRef({ alerts, assets, water, onFeatureSelect });
+  const latestRef = useRef({ alerts, assets, water, rainfall, onFeatureSelect });
   const [query, setQuery] = useState<ExposureQuery>("Polygon");
   const [mapReady, setMapReady] = useState(false);
   const [mapError, setMapError] = useState(false);
   const [selectedFeature, setSelectedFeature] = useState<MapFeatureSelection | null>(null);
+  const [rainfallPeriod, setRainfallPeriod] = useState<RainfallPeriod>(1);
   const [contextLayers, setContextLayers] = useState<Record<ContextLayer, boolean>>({
     Roads: true,
     Water: true,
@@ -330,6 +352,7 @@ export function OperationalMap({
     Places: true,
     Terrain: false,
     "Flood zones": true,
+    Rainfall: true,
   });
 
   const visibleAlerts = useMemo(() => alerts.filter((alert) => matchesHazard(alert, hazard)), [alerts, hazard]);
@@ -341,13 +364,16 @@ export function OperationalMap({
   }, [assets, query]);
   const warningExposures = assets.filter((asset) => geospatialAlerts.some((alert) => alert.geometry && pointInGeometry(asset.longitude, asset.latitude, alert.geometry)));
   const elevationSamples = assets.filter((asset) => asset.elevationM != null).length;
+  const rainfallValues = rainfall.samples.map((sample) => sample.accumulationIn[rainfallPeriod]).filter((value): value is number => value != null);
+  const maximumRainfall = rainfallValues.length > 0 ? Math.max(...rainfallValues) : null;
+  const rainfallValidAt = rainfall.validAt[rainfallPeriod] ?? null;
   const resultTitle = query === "Assets"
     ? `${assets.length} geocoded critical assets`
     : `${selectedAssets.length} assets inside ${query === "Radius" ? "75 km radius" : "operational polygon"}`;
 
   useEffect(() => {
-    latestRef.current = { alerts, assets, water, onFeatureSelect };
-  }, [alerts, assets, onFeatureSelect, water]);
+    latestRef.current = { alerts, assets, water, rainfall, onFeatureSelect };
+  }, [alerts, assets, onFeatureSelect, rainfall, water]);
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -375,6 +401,21 @@ export function OperationalMap({
         attribution: "Terrain tiles: AWS Terrain Tiles",
       });
       const firstLabelLayer = map.getStyle().layers?.find((styleLayer) => styleLayer.type === "symbol")?.id;
+      for (const period of RAINFALL_PERIODS) {
+        map.addSource(`osprey-rainfall-${period}`, {
+          type: "raster",
+          tiles: [rainfallTileUrl(period)],
+          tileSize: 256,
+          attribution: "Rainfall: NOAA/NWS MRMS QPE",
+        });
+        map.addLayer({
+          id: `osprey-rainfall-${period}`,
+          type: "raster",
+          source: `osprey-rainfall-${period}`,
+          layout: { visibility: period === 1 ? "visible" : "none" },
+          paint: { "raster-opacity": 0.66, "raster-fade-duration": 180 },
+        }, firstLabelLayer);
+      }
       map.addLayer({
         id: "osprey-terrain-hillshade",
         type: "hillshade",
@@ -486,23 +527,34 @@ export function OperationalMap({
         setSourceData(map, "osprey-selection", selectionFeature(selection.longitude, selection.latitude));
         map.setLayoutProperty("osprey-selection-halo", "visibility", "visible");
 
-        try {
-          const response = await fetch(`/api/elevation?lat=${selection.latitude}&lon=${selection.longitude}`, { cache: "force-cache" });
-          const payload = await response.json() as { elevationM?: number };
-          const resolved: MapFeatureSelection = {
-            ...selection,
-            elevationM: response.ok && Number.isFinite(payload.elevationM) ? payload.elevationM ?? null : null,
-            elevationStatus: response.ok && Number.isFinite(payload.elevationM) ? "ready" : "unavailable",
-          };
-          if (selectionSequenceRef.current !== sequence) return;
-          setSelectedFeature(resolved);
-          latestRef.current.onFeatureSelect?.(resolved);
-        } catch {
-          if (selectionSequenceRef.current !== sequence) return;
-          const unresolved: MapFeatureSelection = { ...selection, elevationStatus: "unavailable" };
-          setSelectedFeature(unresolved);
-          latestRef.current.onFeatureSelect?.(unresolved);
+        const [elevationResult, rainfallResult] = await Promise.allSettled([
+          fetch(`/api/elevation?lat=${selection.latitude}&lon=${selection.longitude}`, { cache: "force-cache" }),
+          fetch(`/api/rainfall?lat=${selection.latitude}&lon=${selection.longitude}`, { cache: "force-cache" }),
+        ]);
+        let elevationM: number | null = null;
+        let elevationStatus: MapFeatureSelection["elevationStatus"] = "unavailable";
+        let rainfallIn: MapFeatureSelection["rainfallIn"] = null;
+        let rainfallScreening: RainfallScreening = "UNAVAILABLE";
+        let rainfallStatus: MapFeatureSelection["rainfallStatus"] = "unavailable";
+        if (elevationResult.status === "fulfilled") {
+          const payload = await elevationResult.value.json() as { elevationM?: number };
+          if (elevationResult.value.ok && Number.isFinite(payload.elevationM)) {
+            elevationM = payload.elevationM ?? null;
+            elevationStatus = "ready";
+          }
         }
+        if (rainfallResult.status === "fulfilled") {
+          const payload = await rainfallResult.value.json() as { accumulationIn?: Record<RainfallPeriod, number | null>; screening?: RainfallScreening };
+          if (rainfallResult.value.ok && payload.accumulationIn) {
+            rainfallIn = payload.accumulationIn;
+            rainfallScreening = payload.screening ?? "NORMAL";
+            rainfallStatus = "ready";
+          }
+        }
+        if (selectionSequenceRef.current !== sequence) return;
+        const resolved: MapFeatureSelection = { ...selection, elevationM, elevationStatus, rainfallIn, rainfallScreening, rainfallStatus };
+        setSelectedFeature(resolved);
+        latestRef.current.onFeatureSelect?.(resolved);
       });
       map.getCanvas().style.cursor = "crosshair";
       setMapReady(true);
@@ -540,9 +592,12 @@ export function OperationalMap({
     map.setLayoutProperty("osprey-terrain-hillshade", "visibility", contextLayers.Terrain ? "visible" : "none");
     map.setLayoutProperty("osprey-flood-zone-fill", "visibility", contextLayers["Flood zones"] ? "visible" : "none");
     map.setLayoutProperty("osprey-flood-zone-line", "visibility", contextLayers["Flood zones"] ? "visible" : "none");
+    for (const period of RAINFALL_PERIODS) {
+      map.setLayoutProperty(`osprey-rainfall-${period}`, "visibility", contextLayers.Rainfall && period === rainfallPeriod ? "visible" : "none");
+    }
     map.setTerrain(contextLayers.Terrain ? { source: "osprey-terrain", exaggeration: 1.25 } : null);
     map.easeTo({ pitch: contextLayers.Terrain ? 34 : 0, duration: 450 });
-  }, [contextLayers, mapReady]);
+  }, [contextLayers, mapReady, rainfallPeriod]);
 
   function toggleContextLayer(contextLayer: ContextLayer) {
     setContextLayers((current) => ({ ...current, [contextLayer]: !current[contextLayer] }));
@@ -570,12 +625,21 @@ export function OperationalMap({
             ))}
           </div>
         </div>
+        <div className="rainfall-toolbar" aria-label="NOAA MRMS rainfall accumulation overlay">
+          <span>MRMS RAINFALL OVERLAY</span>
+          <div>
+            {RAINFALL_PERIODS.map((period) => (
+              <button key={period} className={rainfallPeriod === period && contextLayers.Rainfall ? "rainfall-selected" : ""} onClick={() => { setRainfallPeriod(period); setContextLayers((current) => ({ ...current, Rainfall: true })); }} aria-pressed={rainfallPeriod === period && contextLayers.Rainfall}>{period}H</button>
+            ))}
+          </div>
+          <small>{maximumRainfall == null ? "Accumulation unavailable" : `${maximumRainfall.toFixed(2)} in maximum across operational points`}{rainfallValidAt ? ` · valid ${new Intl.DateTimeFormat("en-GB", { timeZone: "America/Chicago", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(rainfallValidAt))} CT` : ""}</small>
+        </div>
         <div className="exposure-result">
           <span>LIVE SPATIAL RESULT</span>
           <strong>{resultTitle}</strong>
-          <small>{geospatialAlerts.length === 0 ? "No active NWS warning polygons" : `${geospatialAlerts.length} NWS warning polygons`} · {warningExposures.length} asset intersections · {water.riverGauges.length + water.coastalStations.length} water stations · {water.floodZones.features.length} flood-zone features ({water.floodZoneStatus.toLowerCase()}) · {elevationSamples}/{assets.length} USGS elevations</small>
+          <small>{geospatialAlerts.length === 0 ? "No active NWS warning polygons" : `${geospatialAlerts.length} NWS warning polygons`} · {warningExposures.length} asset intersections · {rainfall.samples.length} MRMS rainfall points · {water.riverGauges.length + water.coastalStations.length} water stations · {water.floodZones.features.length} flood-zone features ({water.floodZoneStatus.toLowerCase()}) · {elevationSamples}/{assets.length} USGS elevations</small>
         </div>
-        <div className="map-legend"><span><i className="legend-high" />NWS warning</span><span><i className="legend-water" />Flood zone</span><span><i className="legend-normal" />Water station</span><span><i className="legend-terrain" />Terrain</span></div>
+        <div className="map-legend"><span><i className="legend-high" />NWS warning</span><span><i className="legend-rainfall" />MRMS rain</span><span><i className="legend-water" />Flood zone</span><span><i className="legend-normal" />Water station</span><span><i className="legend-terrain" />Terrain</span></div>
       </div>
 
       <aside className="feature-inspector" aria-live="polite">
@@ -610,6 +674,7 @@ export function OperationalMap({
               <div><dt>Classification</dt><dd>{selectedFeature.classification}</dd></div>
               {selectedFeature.reference && <div><dt>Reference</dt><dd>{selectedFeature.reference}</dd></div>}
               <div><dt>Terrain height</dt><dd>{selectedFeature.elevationStatus === "loading" ? "Reading USGS elevation…" : selectedFeature.elevationStatus === "ready" ? `${selectedFeature.elevationM?.toFixed(1)} m above mean sea level` : "Elevation unavailable"}</dd></div>
+              <div><dt>Radar rainfall</dt><dd>{selectedFeature.rainfallStatus === "loading" ? "Reading NOAA MRMS grid…" : selectedFeature.rainfallStatus === "ready" && selectedFeature.rainfallIn ? `${selectedFeature.rainfallIn[1] ?? "—"} in / 1h · ${selectedFeature.rainfallIn[6] ?? "—"} in / 6h · ${selectedFeature.rainfallIn[24] ?? "—"} in / 24h · ${selectedFeature.rainfallScreening.toLowerCase()} screening` : "Rainfall estimate unavailable"}</dd></div>
               <div><dt>Coordinates</dt><dd>{selectedFeature.latitude.toFixed(5)}, {selectedFeature.longitude.toFixed(5)}</dd></div>
               <div><dt>Feature source</dt><dd>{selectedFeature.source}</dd></div>
               <div><dt>Elevation source</dt><dd>USGS 3DEP</dd></div>
@@ -627,7 +692,7 @@ export function OperationalMap({
 
         <footer>
           <strong>Source boundary</strong>
-          <p>Basemap features provide contextual geometry. Verify ownership, condition and operational authority against an official asset register before consequential action.</p>
+          <p>MRMS is radar-estimated rainfall, not observed flooding. Basemap features provide contextual geometry. Verify conditions and operational authority before consequential action.</p>
         </footer>
       </aside>
     </div>

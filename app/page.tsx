@@ -189,7 +189,7 @@ export default function Home() {
     };
   }, [refreshFemaInBackground, refreshIntelligence]);
 
-  const { incident, weather, water, assessments, assets, timeline } = intelligence;
+  const { incident, weather, water, rainfall, assessments, assets, timeline } = intelligence;
   const activeAssessment = assessments[openAgent];
   const elevatedAssets = assets.filter((asset) => asset.exposure !== "NORMAL").length;
   const activeHazard = hazardViews.find((hazard) => hazard.id === activeHazardId) ?? hazardViews[0];
@@ -197,6 +197,11 @@ export default function Home() {
   const sourceEvidence = [assessments.weather.evidence[0], ...assessments.infrastructure.evidence.slice(0, 2)].filter(Boolean);
   const leadGauge = [...water.riverGauges].sort((a, b) => (b.percentToAction ?? -1) - (a.percentToAction ?? -1))[0];
   const leadCoast = [...water.coastalStations].sort((a, b) => Math.abs(b.anomalyM ?? 0) - Math.abs(a.anomalyM ?? 0))[0];
+  const rainfallMaxByPeriod = Object.fromEntries(rainfall.periods.map((period) => {
+    const values = rainfall.samples.map((sample) => sample.accumulationIn[period]).filter((value): value is number => value != null);
+    return [period, values.length > 0 ? Math.max(...values) : null];
+  })) as Record<(typeof rainfall.periods)[number], number | null>;
+  const rainfallWatchPoints = rainfall.samples.filter((sample) => ["MONITOR", "ELEVATED"].includes(sample.screening)).length;
   const forecastFrames = weather.forecastFrames.length > 0 ? weather.forecastFrames : [];
   const selectedForecastFrame = forecastFrames[Math.min(forecastFrameIndex, Math.max(0, forecastFrames.length - 1))] ?? null;
   const firstForecastTime = forecastFrames[0]?.startTime ?? weather.fetchedAt;
@@ -255,7 +260,7 @@ export default function Home() {
           <div className="hero-main">
             <div className="eyebrow-row"><span>TEXAS GULF COAST</span><i />SHARED INCIDENT STATE v{incident.version}</div>
             <h1>Houston–Galveston<br />Incident Room</h1>
-            <p>Live weather, river, coastal and flood-zone evidence enters one shared state, where four specialist agents assess conditions, infrastructure exposure, operations and communications.</p>
+            <p>Live weather, radar rainfall, river, coastal and flood-zone evidence enters one shared state, where four specialist agents assess conditions, infrastructure exposure, operations and communications.</p>
           </div>
           <div className="hero-state">
             <span>CURRENT OPERATIONAL STATE</span>
@@ -296,7 +301,7 @@ export default function Home() {
 
         <section className="shared-state" aria-label="Shared incident state flow">
           <span className="shared-label">ONE SHARED INCIDENT STATE</span>
-          <div><span>NWS + water evidence</span><i>→</i><span>Weather</span><i>→</i><span>Infrastructure</span><i>→</i><span>Operations</span><i>→</i><span>Communications</span></div>
+          <div><span>NWS + rainfall + water</span><i>→</i><span>Weather</span><i>→</i><span>Infrastructure</span><i>→</i><span>Operations</span><i>→</i><span>Communications</span></div>
           <small>Each specialist reads the accepted findings before it and publishes evidence-bound output back to the same incident.</small>
         </section>
 
@@ -352,6 +357,7 @@ export default function Home() {
               alerts={weather.activeAlerts}
               assets={assets}
               water={water}
+              rainfall={rainfall}
               layer={mapLayer}
               forecastHour={forecastHour}
               forecastValidAt={selectedForecastFrame?.startTime ?? null}
@@ -376,6 +382,37 @@ export default function Home() {
               </div>
               <div className="forecast-confidence"><span>{assessments.weather.confidence}%</span><small>weather confidence</small></div>
             </div>
+          </div>
+        </section>
+
+        <section className="rainfall-depth-panel" aria-label="Radar-estimated rainfall accumulation and runoff screening">
+          <div className="section-heading">
+            <div><span className="section-kicker">RAINFALL &amp; RUNOFF SCREENING v1</span><h2>Radar accumulation translated into asset context</h2></div>
+            <span className={`water-health ${rainfall.sourceHealth.status === "LIVE" ? "water-health-live" : "water-health-partial"}`}><i />{rainfall.sourceHealth.status} NOAA MRMS</span>
+          </div>
+          {rainfall.warnings.length > 0 && <div className="water-notices">{rainfall.warnings.map((warning) => <span key={warning}>{warning}</span>)}</div>}
+          <div className="rainfall-summary-grid">
+            {rainfall.periods.map((period) => (
+              <div key={period}><span>MAXIMUM {period}H</span><strong>{rainfallMaxByPeriod[period] == null ? "—" : `${rainfallMaxByPeriod[period]?.toFixed(2)} in`}</strong><small>{rainfall.validAt[period] ? `Valid ${formatTime(rainfall.validAt[period]!, true)} CT` : "Valid time pending"}</small></div>
+            ))}
+            <div><span>POINTS TO WATCH</span><strong>{rainfallWatchPoints}</strong><small>{rainfall.samples.length} operational grid cells screened</small></div>
+          </div>
+          <div className="rainfall-boundary-note">
+            <span><i />INTERPRETATION BOUNDARY</span>
+            <div><strong>Rainfall estimates describe water input—not flooding on the ground.</strong><p>NOAA/NWS MRMS provides radar-only accumulation on an approximately {rainfall.resolutionKm} km grid. Osprey combines it with river stages, coastal levels, terrain and FEMA context; it does not treat rainfall alone as proof that a road or asset is flooded.</p></div>
+            <small>Osprey screening begins at 0.5 in / 1h, 1 in / 3h, 1.5 in / 6h or 2 in / 24h. These are transparent triage rules, not official warning thresholds.</small>
+          </div>
+          <div className="rainfall-point-grid">
+            {rainfall.samples.map((sample) => (
+              <article key={sample.id} className={`rainfall-point-card rainfall-screen-${sample.screening.toLowerCase()}`}>
+                <header><span>{sample.id}</span><b>{sample.screening}</b></header>
+                <h3>{sample.name}</h3>
+                <div>
+                  {rainfall.periods.map((period) => <span key={period}><small>{period}H</small><strong>{sample.accumulationIn[period] == null ? "—" : `${sample.accumulationIn[period]?.toFixed(2)} in`}</strong></span>)}
+                </div>
+                <footer>NOAA/NWS MRMS QPE · {sample.latitude.toFixed(3)}, {sample.longitude.toFixed(3)}</footer>
+              </article>
+            ))}
           </div>
         </section>
 

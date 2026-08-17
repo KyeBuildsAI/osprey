@@ -56,6 +56,12 @@ test("server-renders the Houston–Galveston incident room", async () => {
   assert.match(html, /Source boundary/);
   assert.match(html, /TIME-BASED FORECAST/);
   assert.match(html, /LIVE HOURLY NWS · issued frame · valid time shown/);
+  assert.match(html, /MRMS RAINFALL OVERLAY/);
+  assert.match(html, /RAINFALL &amp; RUNOFF SCREENING v1/);
+  assert.match(html, /Radar accumulation translated into asset context/);
+  assert.match(html, /Rainfall estimates describe water input—not flooding on the ground/);
+  assert.match(html, /transparent triage rules, not official warning thresholds/);
+  assert.match(html, /NOAA\/NWS MRMS QPE/);
   assert.match(html, /Weather Agent/);
   assert.match(html, /Infrastructure Agent/);
   assert.match(html, /Operations Agent/);
