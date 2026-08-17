@@ -140,7 +140,7 @@ function waterStationCollection(water: WaterIntelligence): FeatureCollection<Poi
           reading: `${gauge.observedValue ?? "—"} ${gauge.observedUnit}`,
           trend: gauge.trend,
           threshold: gauge.thresholdMetadataStatus === "PENDING"
-            ? "Threshold metadata pending · live level unaffected"
+            ? "Threshold Metadata pending · live level unaffected"
             : gauge.actionStage == null
               ? "No NOAA action stage published"
               : `${gauge.percentToAction ?? "—"}% of ${gauge.actionStage} ${gauge.observedUnit} action stage · ${gauge.thresholdMetadataStatus.toLowerCase()} metadata`,

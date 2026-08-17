@@ -34,7 +34,7 @@ test("server-renders the Houston–Galveston incident room", async () => {
   assert.match(html, /Live thresholds, trends and tide anomalies/);
   assert.match(html, /NOAA NWPS · USGS · NOAA CO-OPS · FEMA NFHL/);
   assert.match(html, /EXPECTED METADATA LAG/);
-  assert.match(html, /Threshold metadata pending/);
+  assert.match(html, /Threshold Metadata pending/);
   assert.match(html, /caches verified values for 24 hours/);
   assert.match(html, /INFRASTRUCTURE IDENTIFY/);
   assert.match(html, /Click the map to inspect/);
