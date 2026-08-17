@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AttributionControl, Map as MapLibreMap, NavigationControl, Popup, type GeoJSONSource } from "maplibre-gl";
+import { AttributionControl, Map as MapLibreMap, NavigationControl, Popup, setWorkerUrl, type GeoJSONSource } from "maplibre-gl";
+import mapLibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import type { Feature, FeatureCollection, Geometry, Point, Polygon } from "geojson";
 import type { AlertGeometry, InfrastructureAsset, WeatherAlert } from "@/lib/intelligence";
 
@@ -10,6 +11,7 @@ type ExposureQuery = "Radius" | "Polygon" | "Assets";
 type HazardId = "compound" | "flood" | "wind" | "heat";
 
 const HOUSTON: [number, number] = [-95.3698, 29.7604];
+setWorkerUrl(mapLibreWorkerUrl);
 const OPERATIONAL_POLYGON: Polygon = {
   type: "Polygon",
   coordinates: [[
@@ -242,9 +244,17 @@ export function OperationalMap({
 
   return (
     <div className="geospatial-map-shell">
+      <div className="map-fallback-base" aria-hidden="true">
+        <div className="map-grid-lines" />
+        <div className="coast-shape" />
+        <div className="bay-water"><span>GALVESTON BAY</span></div>
+        <div className="place place-houston"><i /><strong>Houston</strong><small>Operational centre</small></div>
+        <div className="place place-clear-lake"><i /><strong>Clear Lake</strong><small>Access corridor</small></div>
+        <div className="place place-galveston"><i /><strong>Galveston</strong><small>Coastal assets</small></div>
+      </div>
       <div ref={containerRef} className="geospatial-map" aria-label="Interactive Houston–Galveston geospatial operations map" />
       <div className="map-time"><span>{layer.toUpperCase()} · LIVE GEOSPATIAL WINDOW</span><strong>NOW + {forecastHour} HOURS</strong></div>
-      <div className="geo-source-status"><i className={mapReady ? "geo-ready" : ""} /><span>{mapError ? "Basemap connection interrupted" : mapReady ? "MAPLIBRE · LIVE MAP" : "LOADING GEOSPATIAL MAP"}</span></div>
+      <div className="geo-source-status"><i className={mapReady ? "geo-ready" : ""} /><span>{mapError && !mapReady ? "GEOGRAPHIC FALLBACK ACTIVE" : mapReady ? "MAPLIBRE · LIVE MAP" : "LOADING GEOSPATIAL MAP"}</span></div>
       <div className="query-toolbar" aria-label="Map exposure query">
         <span>EXPOSURE QUERY</span>
         <div>
