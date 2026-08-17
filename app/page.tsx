@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { OperationalMap } from "@/components/OperationalMap";
+import { OperationalMap, type MapFeatureSelection } from "@/components/OperationalMap";
 import {
   demoIntelligence,
   type AgentAssessment,
@@ -86,6 +86,7 @@ export default function Home() {
   const [decisionOpen, setDecisionOpen] = useState(false);
   const [selectedOption, setSelectedOption] = useState<(typeof decisionOptions)[number]["id"]>("COA-02");
   const [packetQueued, setPacketQueued] = useState(false);
+  const [selectedMapFeature, setSelectedMapFeature] = useState<MapFeatureSelection | null>(null);
 
   const refreshIntelligence = useCallback(async () => {
     setRefreshState("loading");
@@ -117,6 +118,11 @@ export default function Home() {
   const activeHazard = hazardViews.find((hazard) => hazard.id === activeHazardId) ?? hazardViews[0];
   const selectedCourse = decisionOptions.find((option) => option.id === selectedOption) ?? decisionOptions[1];
   const sourceEvidence = assessments.weather.evidence.slice(0, 3);
+
+  const openInfrastructureContext = useCallback(() => {
+    setOpenAgent("infrastructure");
+    window.setTimeout(() => document.getElementById("agents")?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
+  }, []);
 
   return (
     <main className="room-shell">
@@ -230,6 +236,8 @@ export default function Home() {
               layer={mapLayer}
               forecastHour={forecastHour}
               hazard={activeHazard.id}
+              onFeatureSelect={setSelectedMapFeature}
+              onOpenInfrastructure={openInfrastructureContext}
             />
             <div className="forecast-control">
               <div><span className="section-kicker">TIME-BASED FORECAST</span><strong>{weather.forecast.period} · {weather.forecast.summary}</strong></div>
@@ -264,6 +272,14 @@ export default function Home() {
               <div><span>{activeAssessment.label.toUpperCase()} AGENT DETAIL</span><h3>{activeAssessment.headline}</h3></div>
               {activeAssessment.requiresApproval && <span className="approval-chip">HUMAN APPROVAL REQUIRED</span>}
             </div>
+            {openAgent === "infrastructure" && selectedMapFeature && (
+              <div className="map-context-evidence">
+                <span><i />SESSION MAP CONTEXT</span>
+                <strong>{selectedMapFeature.name}</strong>
+                <p>{selectedMapFeature.classification} · {selectedMapFeature.elevationStatus === "ready" ? `${selectedMapFeature.elevationM?.toFixed(1)} m USGS terrain height` : "terrain height unavailable"} · {selectedMapFeature.latitude.toFixed(5)}, {selectedMapFeature.longitude.toFixed(5)}</p>
+                <small>This selected feature is attached to the current interface session for operator review; it does not alter the authoritative incident assessment.</small>
+              </div>
+            )}
             <div className="detail-columns">
               <div className="finding-list">
                 <span className="detail-label">FINDINGS</span>

@@ -24,7 +24,7 @@ function readElevation(payload: unknown): number | null {
   return null;
 }
 
-async function fetchElevation(longitude: number, latitude: number) {
+export async function fetchPointElevation(longitude: number, latitude: number) {
   const url = new URL(USGS_ENDPOINT);
   url.searchParams.set("x", String(longitude));
   url.searchParams.set("y", String(latitude));
@@ -34,8 +34,8 @@ async function fetchElevation(longitude: number, latitude: number) {
 
   const response = await fetch(url, {
     headers: { Accept: "application/json", "User-Agent": "Osprey/0.2 geospatial incident-room prototype" },
-    cache: "force-cache",
-    signal: AbortSignal.timeout(2_500),
+    cache: "no-store",
+    signal: AbortSignal.timeout(12_000),
   });
   if (!response.ok) return null;
   return readElevation(await response.json());
@@ -45,7 +45,7 @@ export async function fetchAssetElevations(): Promise<Record<string, number | nu
   const samples = await Promise.all(
     infrastructureAssetFixtures.map(async (asset) => {
       try {
-        const liveSample = await fetchElevation(asset.longitude, asset.latitude);
+        const liveSample = await fetchPointElevation(asset.longitude, asset.latitude);
         return [asset.id, liveSample ?? CACHED_USGS_SAMPLES[asset.id] ?? null] as const;
       } catch {
         return [asset.id, CACHED_USGS_SAMPLES[asset.id] ?? null] as const;

@@ -1,17 +1,44 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AttributionControl, Map as MapLibreMap, NavigationControl, Popup, setWorkerUrl, type GeoJSONSource } from "maplibre-gl";
+import {
+  AttributionControl,
+  Map as MapLibreMap,
+  NavigationControl,
+  setWorkerUrl,
+  type GeoJSONSource,
+  type MapGeoJSONFeature,
+} from "maplibre-gl";
 import mapLibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
-import type { Feature, FeatureCollection, Geometry, Point, Polygon } from "geojson";
+import type { Feature, FeatureCollection, GeoJsonObject, Geometry, Point, Polygon } from "geojson";
 import type { AlertGeometry, InfrastructureAsset, WeatherAlert } from "@/lib/intelligence";
 
 type MapLayer = "Risk" | "Impact" | "Assets";
 type ExposureQuery = "Radius" | "Polygon" | "Assets";
 type HazardId = "compound" | "flood" | "wind" | "heat";
+type ContextLayer = "Roads" | "Water" | "Rail" | "Places" | "Terrain";
+
+export interface MapFeatureSelection {
+  id: string;
+  name: string;
+  category: string;
+  classification: string;
+  source: string;
+  longitude: number;
+  latitude: number;
+  reference: string | null;
+  detail: string;
+  elevationM: number | null;
+  elevationStatus: "loading" | "ready" | "unavailable";
+}
 
 const HOUSTON: [number, number] = [-95.3698, 29.7604];
+const BASEMAP_STYLE = "https://tiles.openfreemap.org/styles/bright";
+const TERRAIN_TILES = "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png";
+const CONTEXT_LAYERS: ContextLayer[] = ["Roads", "Water", "Rail", "Places", "Terrain"];
+const OSPREY_LAYER_PREFIX = "osprey-";
 setWorkerUrl(mapLibreWorkerUrl);
+
 const OPERATIONAL_POLYGON: Polygon = {
   type: "Polygon",
   coordinates: [[
@@ -103,9 +130,102 @@ function queryFeature(query: ExposureQuery): Feature<Polygon> {
   };
 }
 
-function setSourceData(map: MapLibreMap, id: string, data: FeatureCollection | Feature<Polygon>) {
+function selectionFeature(longitude: number, latitude: number): Feature<Point> {
+  return {
+    type: "Feature",
+    properties: {},
+    geometry: { type: "Point", coordinates: [longitude, latitude] },
+  };
+}
+
+function setSourceData(map: MapLibreMap, id: string, data: GeoJsonObject) {
   const source = map.getSource(id) as GeoJSONSource | undefined;
   if (source) source.setData(data);
+}
+
+function titleCase(value: unknown) {
+  return String(value ?? "")
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase())
+    .trim();
+}
+
+function property(feature: MapGeoJSONFeature, ...keys: string[]) {
+  for (const key of keys) {
+    const value = feature.properties?.[key];
+    if (value != null && String(value).trim()) return String(value);
+  }
+  return "";
+}
+
+function featureCategory(feature: MapGeoJSONFeature) {
+  if (feature.source === "osprey-assets") return "Critical asset";
+  if (feature.source === "osprey-warnings") return "Weather warning";
+
+  const descriptor = `${feature.sourceLayer ?? ""} ${feature.layer.id} ${property(feature, "class", "subclass", "type", "kind", "brunnel")}`.toLowerCase();
+  if (property(feature, "bridge") || /\bbridge\b/.test(descriptor)) return "Bridge";
+  if (/rail|railway|tram|subway/.test(descriptor)) return "Railway";
+  if (/road|street|transport|motorway|trunk|primary|secondary|tertiary|path/.test(descriptor)) return "Road";
+  if (/water|river|lake|ocean|bay|canal|stream/.test(descriptor)) return "Water";
+  if (/building/.test(descriptor)) return "Building";
+  if (/poi|place|airport|aeroway|park|hospital|school|landmark/.test(descriptor)) return "Landmark";
+  if (/landuse|landcover|natural/.test(descriptor)) return "Terrain";
+  return "Map feature";
+}
+
+function contextCategory(layer: { id: string; sourceLayer?: string }): ContextLayer | null {
+  if (layer.id.startsWith(OSPREY_LAYER_PREFIX)) return null;
+  const descriptor = `${layer.id} ${layer.sourceLayer ?? ""}`.toLowerCase();
+  if (/rail|railway|tram|subway/.test(descriptor)) return "Rail";
+  if (/road|street|transport|motorway|trunk|primary|secondary|tertiary|path|bridge|tunnel/.test(descriptor)) return "Roads";
+  if (/water|river|lake|ocean|bay|canal|stream/.test(descriptor)) return "Water";
+  if (/poi|place|label|building|airport|aeroway|park|hospital|school|landmark/.test(descriptor)) return "Places";
+  return null;
+}
+
+function identifyFeature(
+  feature: MapGeoJSONFeature | undefined,
+  longitude: number,
+  latitude: number,
+): MapFeatureSelection {
+  const category = feature ? featureCategory(feature) : "Terrain location";
+  const classValue = feature ? property(feature, "class", "subclass", "type", "kind", "brunnel") : "";
+  const reference = feature ? property(feature, "ref", "network", "icao", "iata") || null : null;
+  const name = feature
+    ? property(feature, "name_en", "name:en", "name", "ref") || `Unnamed ${category.toLowerCase()}`
+    : "Selected terrain point";
+  const structure = feature ? property(feature, "brunnel", "bridge", "tunnel") : "";
+  const detailParts = [
+    classValue ? titleCase(classValue) : "",
+    structure ? titleCase(structure) : "",
+    feature ? titleCase(feature.sourceLayer ?? feature.layer.id) : "Ground elevation sample",
+  ].filter(Boolean);
+  const source = feature?.source === "osprey-assets"
+    ? "Osprey demonstration asset"
+    : feature?.source === "osprey-warnings"
+      ? "National Weather Service"
+      : "OpenStreetMap context · OpenFreeMap tiles";
+
+  return {
+    id: `${longitude.toFixed(5)}:${latitude.toFixed(5)}`,
+    name: titleCase(name),
+    category,
+    classification: classValue ? `${category} · ${titleCase(classValue)}` : category,
+    source,
+    longitude,
+    latitude,
+    reference,
+    detail: detailParts.join(" · ") || category,
+    elevationM: null,
+    elevationStatus: "loading",
+  };
+}
+
+function isInspectable(feature: MapGeoJSONFeature) {
+  if (feature.source === "osprey-assets" || feature.source === "osprey-warnings") return true;
+  if (feature.layer.id.startsWith(OSPREY_LAYER_PREFIX)) return false;
+  const category = featureCategory(feature);
+  return category !== "Map feature" || Boolean(property(feature, "name", "name_en", "name:en", "ref"));
 }
 
 export function OperationalMap({
@@ -114,19 +234,32 @@ export function OperationalMap({
   layer,
   forecastHour,
   hazard,
+  onFeatureSelect,
+  onOpenInfrastructure,
 }: {
   alerts: WeatherAlert[];
   assets: InfrastructureAsset[];
   layer: MapLayer;
   forecastHour: number;
   hazard: HazardId;
+  onFeatureSelect?: (feature: MapFeatureSelection) => void;
+  onOpenInfrastructure?: () => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
-  const latestRef = useRef({ alerts, assets });
+  const selectionSequenceRef = useRef(0);
+  const latestRef = useRef({ alerts, assets, onFeatureSelect });
   const [query, setQuery] = useState<ExposureQuery>("Polygon");
   const [mapReady, setMapReady] = useState(false);
   const [mapError, setMapError] = useState(false);
+  const [selectedFeature, setSelectedFeature] = useState<MapFeatureSelection | null>(null);
+  const [contextLayers, setContextLayers] = useState<Record<ContextLayer, boolean>>({
+    Roads: true,
+    Water: true,
+    Rail: true,
+    Places: true,
+    Terrain: false,
+  });
 
   const visibleAlerts = useMemo(() => alerts.filter((alert) => matchesHazard(alert, hazard)), [alerts, hazard]);
   const geospatialAlerts = visibleAlerts.filter((alert) => alert.geometry);
@@ -142,29 +275,51 @@ export function OperationalMap({
     : `${selectedAssets.length} assets inside ${query === "Radius" ? "75 km radius" : "operational polygon"}`;
 
   useEffect(() => {
-    latestRef.current = { alerts, assets };
-  }, [alerts, assets]);
+    latestRef.current = { alerts, assets, onFeatureSelect };
+  }, [alerts, assets, onFeatureSelect]);
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
     const map = new MapLibreMap({
       container: containerRef.current,
-      style: "https://demotiles.maplibre.org/style.json",
+      style: BASEMAP_STYLE,
       center: [-95.25, 29.58],
       zoom: 8.15,
       minZoom: 6.2,
-      maxZoom: 15,
+      maxZoom: 17,
       maxBounds: [[-97.2, 27.9], [-93.4, 31.3]],
       attributionControl: false,
     });
     mapRef.current = map;
-    map.addControl(new NavigationControl({ showCompass: true }), "bottom-right");
+    map.addControl(new NavigationControl({ showCompass: true, visualizePitch: true }), "bottom-right");
     map.addControl(new AttributionControl({ compact: true }), "bottom-left");
 
     map.on("load", () => {
+      map.addSource("osprey-terrain", {
+        type: "raster-dem",
+        tiles: [TERRAIN_TILES],
+        tileSize: 256,
+        maxzoom: 15,
+        encoding: "terrarium",
+        attribution: "Terrain tiles: AWS Terrain Tiles",
+      });
+      const firstLabelLayer = map.getStyle().layers?.find((styleLayer) => styleLayer.type === "symbol")?.id;
+      map.addLayer({
+        id: "osprey-terrain-hillshade",
+        type: "hillshade",
+        source: "osprey-terrain",
+        layout: { visibility: "none" },
+        paint: {
+          "hillshade-shadow-color": "#173b32",
+          "hillshade-highlight-color": "#f4e6bd",
+          "hillshade-accent-color": "#9d7b40",
+          "hillshade-exaggeration": 0.42,
+        },
+      }, firstLabelLayer);
       map.addSource("osprey-warnings", { type: "geojson", data: warningCollection(latestRef.current.alerts) });
       map.addSource("osprey-query", { type: "geojson", data: queryFeature("Polygon") });
       map.addSource("osprey-assets", { type: "geojson", data: assetCollection(latestRef.current.assets) });
+      map.addSource("osprey-selection", { type: "geojson", data: selectionFeature(HOUSTON[0], HOUSTON[1]) });
       map.addLayer({
         id: "osprey-query-fill",
         type: "fill",
@@ -175,7 +330,7 @@ export function OperationalMap({
         id: "osprey-query-line",
         type: "line",
         source: "osprey-query",
-        paint: { "line-color": "#f0c369", "line-width": 2, "line-dasharray": [3, 2] },
+        paint: { "line-color": "#c99224", "line-width": 2, "line-dasharray": [3, 2] },
       });
       map.addLayer({
         id: "osprey-warning-fill",
@@ -187,7 +342,7 @@ export function OperationalMap({
         id: "osprey-warning-line",
         type: "line",
         source: "osprey-warnings",
-        paint: { "line-color": "#ffb091", "line-width": 2.5 },
+        paint: { "line-color": "#ba4a2e", "line-width": 2.5 },
       });
       map.addLayer({
         id: "osprey-assets",
@@ -195,33 +350,59 @@ export function OperationalMap({
         source: "osprey-assets",
         paint: {
           "circle-radius": ["match", ["get", "criticality"], "CRITICAL", 10, 8],
-          "circle-color": ["match", ["get", "exposure"], "ELEVATED", "#de5b36", "MONITOR", "#e6ae48", "#65b889"],
+          "circle-color": ["match", ["get", "exposure"], "ELEVATED", "#de5b36", "MONITOR", "#e6ae48", "#38815f"],
           "circle-stroke-color": "#ffffff",
           "circle-stroke-width": 2,
           "circle-opacity": 0.96,
         },
       });
-
-      map.on("click", "osprey-assets", (event) => {
-        const feature = event.features?.[0];
-        if (!feature || feature.geometry.type !== "Point") return;
-        const properties = feature.properties ?? {};
-        const content = document.createElement("div");
-        content.className = "map-popup-content";
-        const kicker = document.createElement("span");
-        kicker.textContent = `${properties.type ?? "Asset"} · ${properties.criticality ?? ""}`;
-        const title = document.createElement("strong");
-        title.textContent = String(properties.name ?? "Infrastructure asset");
-        const detail = document.createElement("p");
-        detail.textContent = `${properties.location ?? ""} · ${properties.elevation ?? ""}`;
-        content.append(kicker, title, detail);
-        new Popup({ offset: 14, closeButton: true })
-          .setLngLat(feature.geometry.coordinates as [number, number])
-          .setDOMContent(content)
-          .addTo(map);
+      map.addLayer({
+        id: "osprey-selection-halo",
+        type: "circle",
+        source: "osprey-selection",
+        layout: { visibility: "none" },
+        paint: {
+          "circle-radius": 15,
+          "circle-color": "rgba(255,255,255,0)",
+          "circle-stroke-color": "#143c30",
+          "circle-stroke-width": 3,
+        },
       });
-      map.on("mouseenter", "osprey-assets", () => { map.getCanvas().style.cursor = "pointer"; });
-      map.on("mouseleave", "osprey-assets", () => { map.getCanvas().style.cursor = ""; });
+
+      map.on("click", async (event) => {
+        const rendered = map.queryRenderedFeatures([
+          [event.point.x - 5, event.point.y - 5],
+          [event.point.x + 5, event.point.y + 5],
+        ]);
+        const asset = rendered.find((feature) => feature.source === "osprey-assets");
+        const context = rendered.find((feature) => isInspectable(feature) && feature.source !== "osprey-warnings");
+        const warning = rendered.find((feature) => feature.source === "osprey-warnings");
+        const selection = identifyFeature(asset ?? context ?? warning, event.lngLat.lng, event.lngLat.lat);
+        const sequence = ++selectionSequenceRef.current;
+        setSelectedFeature(selection);
+        latestRef.current.onFeatureSelect?.(selection);
+        setSourceData(map, "osprey-selection", selectionFeature(selection.longitude, selection.latitude));
+        map.setLayoutProperty("osprey-selection-halo", "visibility", "visible");
+
+        try {
+          const response = await fetch(`/api/elevation?lat=${selection.latitude}&lon=${selection.longitude}`, { cache: "force-cache" });
+          const payload = await response.json() as { elevationM?: number };
+          const resolved: MapFeatureSelection = {
+            ...selection,
+            elevationM: response.ok && Number.isFinite(payload.elevationM) ? payload.elevationM ?? null : null,
+            elevationStatus: response.ok && Number.isFinite(payload.elevationM) ? "ready" : "unavailable",
+          };
+          if (selectionSequenceRef.current !== sequence) return;
+          setSelectedFeature(resolved);
+          latestRef.current.onFeatureSelect?.(resolved);
+        } catch {
+          if (selectionSequenceRef.current !== sequence) return;
+          const unresolved: MapFeatureSelection = { ...selection, elevationStatus: "unavailable" };
+          setSelectedFeature(unresolved);
+          latestRef.current.onFeatureSelect?.(unresolved);
+        }
+      });
+      map.getCanvas().style.cursor = "crosshair";
       setMapReady(true);
     });
     map.on("error", () => setMapError(true));
@@ -242,36 +423,110 @@ export function OperationalMap({
     map.setPaintProperty("osprey-query-fill", "fill-opacity", query === "Assets" ? 0.015 : 0.08 + forecastHour * 0.002);
   }, [assets, forecastHour, layer, mapReady, query, visibleAlerts]);
 
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+    for (const styleLayer of map.getStyle().layers ?? []) {
+      const category = contextCategory({
+        id: styleLayer.id,
+        sourceLayer: "source-layer" in styleLayer ? styleLayer["source-layer"] : undefined,
+      });
+      if (category) map.setLayoutProperty(styleLayer.id, "visibility", contextLayers[category] ? "visible" : "none");
+    }
+    map.setLayoutProperty("osprey-terrain-hillshade", "visibility", contextLayers.Terrain ? "visible" : "none");
+    map.setTerrain(contextLayers.Terrain ? { source: "osprey-terrain", exaggeration: 1.25 } : null);
+    map.easeTo({ pitch: contextLayers.Terrain ? 34 : 0, duration: 450 });
+  }, [contextLayers, mapReady]);
+
+  function toggleContextLayer(contextLayer: ContextLayer) {
+    setContextLayers((current) => ({ ...current, [contextLayer]: !current[contextLayer] }));
+  }
+
   return (
-    <div className="geospatial-map-shell">
-      <div className="map-fallback-base" aria-hidden="true">
-        <div className="map-grid-lines" />
-        <div className="coast-shape" />
-        <div className="bay-water"><span>GALVESTON BAY</span></div>
-        <div className="place place-houston"><i /><strong>Houston</strong><small>Operational centre</small></div>
-        <div className="place place-clear-lake"><i /><strong>Clear Lake</strong><small>Access corridor</small></div>
-        <div className="place place-galveston"><i /><strong>Galveston</strong><small>Coastal assets</small></div>
-      </div>
-      <div ref={containerRef} className="geospatial-map" aria-label="Interactive Houston–Galveston geospatial operations map" />
-      <div className="map-time"><span>{layer.toUpperCase()} · LIVE GEOSPATIAL WINDOW</span><strong>NOW + {forecastHour} HOURS</strong></div>
-      <div className="geo-source-status"><i className={mapReady ? "geo-ready" : ""} /><span>{mapError && !mapReady ? "GEOGRAPHIC FALLBACK ACTIVE" : mapReady ? "MAPLIBRE · LIVE MAP" : "LOADING GEOSPATIAL MAP"}</span></div>
-      <div className="query-toolbar" aria-label="Map exposure query">
-        <span>EXPOSURE QUERY</span>
-        <div>
-          {(["Radius", "Polygon", "Assets"] as const).map((option) => (
-            <button key={option} className={query === option ? "query-selected" : ""} onClick={() => setQuery(option)} aria-pressed={query === option}>{option}</button>
-          ))}
+    <div className="map-intelligence-layout">
+      <div className="geospatial-map-shell">
+        <div className="map-fallback-base" aria-hidden="true">
+          <div className="map-grid-lines" />
+          <div className="coast-shape" />
+          <div className="bay-water"><span>GALVESTON BAY</span></div>
+          <div className="place place-houston"><i /><strong>Houston</strong><small>Operational centre</small></div>
+          <div className="place place-clear-lake"><i /><strong>Clear Lake</strong><small>Access corridor</small></div>
+          <div className="place place-galveston"><i /><strong>Galveston</strong><small>Coastal assets</small></div>
         </div>
+        <div ref={containerRef} className="geospatial-map" aria-label="Interactive Houston–Galveston infrastructure and terrain map" />
+        <div className="map-time"><span>{layer.toUpperCase()} · INFRASTRUCTURE WINDOW</span><strong>NOW + {forecastHour} HOURS</strong></div>
+        <div className="geo-source-status"><i className={mapReady ? "geo-ready" : ""} /><span>{mapError && !mapReady ? "GEOGRAPHIC FALLBACK ACTIVE" : mapReady ? "DETAILED VECTOR MAP · LIVE" : "LOADING INFRASTRUCTURE MAP"}</span></div>
+        <div className="query-toolbar" aria-label="Map exposure query">
+          <span>EXPOSURE QUERY</span>
+          <div>
+            {(["Radius", "Polygon", "Assets"] as const).map((option) => (
+              <button key={option} className={query === option ? "query-selected" : ""} onClick={() => setQuery(option)} aria-pressed={query === option}>{option}</button>
+            ))}
+          </div>
+        </div>
+        <div className="exposure-result">
+          <span>LIVE SPATIAL RESULT</span>
+          <strong>{resultTitle}</strong>
+          <small>{geospatialAlerts.length} NWS warning polygons · {warningExposures.length} direct intersections · {elevationSamples}/{assets.length} USGS asset elevations</small>
+        </div>
+        <div className="map-legend"><span><i className="legend-high" />NWS warning</span><span><i className="legend-medium" />Monitor</span><span><i className="legend-normal" />Normal</span><span><i className="legend-terrain" />Terrain</span></div>
+        {mapReady && geospatialAlerts.length === 0 && (
+          <div className="no-warning-geometry"><i>✓</i><span>No active {hazard === "compound" ? "" : `${hazard} `}NWS warning polygons in the operating area</span></div>
+        )}
       </div>
-      <div className="exposure-result">
-        <span>LIVE SPATIAL RESULT</span>
-        <strong>{resultTitle}</strong>
-        <small>{geospatialAlerts.length} NWS warning polygons · {warningExposures.length} direct intersections · {elevationSamples}/{assets.length} USGS elevation samples</small>
-      </div>
-      <div className="map-legend"><span><i className="legend-high" />NWS warning</span><span><i className="legend-medium" />Monitor</span><span><i className="legend-normal" />Normal</span></div>
-      {mapReady && geospatialAlerts.length === 0 && (
-        <div className="no-warning-geometry"><i>✓</i><span>No active {hazard === "compound" ? "" : `${hazard} `}NWS warning polygons in the operating area</span></div>
-      )}
+
+      <aside className="feature-inspector" aria-live="polite">
+        <header>
+          <span className="section-kicker">INFRASTRUCTURE IDENTIFY</span>
+          <h3>Click the map to inspect</h3>
+          <p>Identify roads, bridges, rail, water, places and terrain height at the selected location.</p>
+        </header>
+
+        <div className="context-layer-controls" aria-label="Context map layers">
+          <span>VISIBLE CONTEXT</span>
+          <div>
+            {CONTEXT_LAYERS.map((contextLayer) => (
+              <button
+                key={contextLayer}
+                className={contextLayers[contextLayer] ? "context-active" : ""}
+                onClick={() => toggleContextLayer(contextLayer)}
+                aria-pressed={contextLayers[contextLayer]}
+              >
+                <i />{contextLayer}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {selectedFeature ? (
+          <div className="selected-feature-card">
+            <span className="selected-feature-type"><i />{selectedFeature.category}</span>
+            <h4>{selectedFeature.name}</h4>
+            <p>{selectedFeature.detail}</p>
+            <dl>
+              <div><dt>Classification</dt><dd>{selectedFeature.classification}</dd></div>
+              {selectedFeature.reference && <div><dt>Reference</dt><dd>{selectedFeature.reference}</dd></div>}
+              <div><dt>Terrain height</dt><dd>{selectedFeature.elevationStatus === "loading" ? "Reading USGS elevation…" : selectedFeature.elevationStatus === "ready" ? `${selectedFeature.elevationM?.toFixed(1)} m above mean sea level` : "Elevation unavailable"}</dd></div>
+              <div><dt>Coordinates</dt><dd>{selectedFeature.latitude.toFixed(5)}, {selectedFeature.longitude.toFixed(5)}</dd></div>
+              <div><dt>Feature source</dt><dd>{selectedFeature.source}</dd></div>
+              <div><dt>Elevation source</dt><dd>USGS 3DEP</dd></div>
+            </dl>
+            <button className="share-map-context" onClick={onOpenInfrastructure}>Open in Infrastructure Agent →</button>
+          </div>
+        ) : (
+          <div className="feature-empty-state">
+            <span>＋</span>
+            <strong>No feature selected</strong>
+            <p>Click a road, bridge, lake, railway, building or any terrain point to inspect it.</p>
+            <div><small>ROAD</small><small>BRIDGE</small><small>WATER</small><small>RAIL</small><small>PLACE</small><small>TERRAIN</small></div>
+          </div>
+        )}
+
+        <footer>
+          <strong>Source boundary</strong>
+          <p>Basemap features provide contextual geometry. Verify ownership, condition and operational authority against an official asset register before consequential action.</p>
+        </footer>
+      </aside>
     </div>
   );
 }
