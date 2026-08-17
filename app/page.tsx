@@ -11,6 +11,33 @@ import {
 
 const agentOrder: AgentId[] = ["weather", "infrastructure", "operations", "communications"];
 
+const hazardViews = [
+  { id: "compound", label: "Compound", focus: "All operational hazards", status: "Active" },
+  { id: "flood", label: "Flood", focus: "Coastal and surface-water exposure", status: "Watch" },
+  { id: "wind", label: "Wind", focus: "Power and access continuity", status: "Monitor" },
+  { id: "heat", label: "Heat", focus: "Health and cooling continuity", status: "Monitor" },
+] as const;
+
+const exposureQueries = {
+  Radius: "8 priority zones · 21,400 people",
+  Polygon: "3 critical assets · 2 access routes",
+  Assets: "3 critical assets · 3 accountable owners",
+} as const;
+
+type ExposureQuery = keyof typeof exposureQueries;
+
+const decisionOptions = [
+  { id: "COA-01", posture: "monitor", title: "Monitor and verify", summary: "Maintain the current posture while the next NWS update and asset-owner checks complete.", benefit: "Avoids unnecessary mobilisation while conditions remain stable.", tradeoff: "Leaves less preparation time if conditions deteriorate quickly." },
+  { id: "COA-02", posture: "prepare", title: "Prepare critical-asset readiness", summary: "Ask owners to verify hospital continuity, pump availability and I-45 access without releasing an external action.", benefit: "Shortens response time while preserving operational flexibility.", tradeoff: "Uses limited coordination capacity before a severe threshold is crossed." },
+  { id: "COA-03", posture: "act", title: "Activate precautionary response", summary: "Begin a controlled readiness response for elevated assets, subject to named human approval.", benefit: "Creates the largest safety margin for a worsening hazard.", tradeoff: "Consequential preparation may be disproportionate to current evidence." },
+] as const;
+
+const operationalMeasures = [
+  { label: "Signal to awareness", value: "<1m", change: "live", detail: "NWS receipt to shared incident state" },
+  { label: "Evidence coverage", value: "92%", change: "+8 pts", detail: "Claims with linked source records" },
+  { label: "Operator workload", value: "4", change: "−5", detail: "Manual coordination steps remaining" },
+] as const;
+
 const agentNumbers: Record<AgentId, string> = {
   weather: "01",
   infrastructure: "02",
@@ -60,6 +87,13 @@ export default function Home() {
   const [refreshState, setRefreshState] = useState<"idle" | "loading" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState("");
   const [openAgent, setOpenAgent] = useState<AgentId>("weather");
+  const [activeHazardId, setActiveHazardId] = useState<(typeof hazardViews)[number]["id"]>("compound");
+  const [mapLayer, setMapLayer] = useState<"Risk" | "Impact" | "Assets">("Risk");
+  const [exposureQuery, setExposureQuery] = useState<ExposureQuery>("Polygon");
+  const [forecastHour, setForecastHour] = useState(3);
+  const [decisionOpen, setDecisionOpen] = useState(false);
+  const [selectedOption, setSelectedOption] = useState<(typeof decisionOptions)[number]["id"]>("COA-02");
+  const [packetQueued, setPacketQueued] = useState(false);
 
   const refreshIntelligence = useCallback(async () => {
     setRefreshState("loading");
@@ -88,6 +122,9 @@ export default function Home() {
   const { incident, weather, assessments, assets, timeline } = intelligence;
   const activeAssessment = assessments[openAgent];
   const elevatedAssets = assets.filter((asset) => asset.exposure !== "NORMAL").length;
+  const activeHazard = hazardViews.find((hazard) => hazard.id === activeHazardId) ?? hazardViews[0];
+  const selectedCourse = decisionOptions.find((option) => option.id === selectedOption) ?? decisionOptions[1];
+  const sourceEvidence = assessments.weather.evidence.slice(0, 3);
 
   return (
     <main className="room-shell">
@@ -99,8 +136,8 @@ export default function Home() {
 
         <nav className="room-nav" aria-label="Incident room sections">
           <a href="#overview" className="nav-current"><span>01</span>Overview</a>
-          <a href="#agents"><span>02</span>Agents</a>
-          <a href="#assets"><span>03</span>Assets</a>
+          <a href="#operational-map"><span>02</span>Map</a>
+          <a href="#agents"><span>03</span>Agents</a>
           <a href="#timeline"><span>04</span>Timeline</a>
         </nav>
 
@@ -168,6 +205,66 @@ export default function Home() {
           <small>Each specialist reads the accepted findings before it and publishes evidence-bound output back to the same incident.</small>
         </section>
 
+        <section className="operational-workspace" id="operational-map">
+          <div className="hazard-lenses" aria-label="Hazard-specific operational views">
+            <span>OPERATIONAL LENS</span>
+            <div>
+              {hazardViews.map((hazard) => (
+                <button
+                  key={hazard.id}
+                  className={activeHazard.id === hazard.id ? "hazard-selected" : ""}
+                  onClick={() => setActiveHazardId(hazard.id)}
+                  aria-pressed={activeHazard.id === hazard.id}
+                >
+                  <strong>{hazard.label}</strong><small>{hazard.status}</small>
+                </button>
+              ))}
+            </div>
+            <p><i />{activeHazard.focus}</p>
+          </div>
+
+          <div className="map-panel">
+            <div className="map-panel-header">
+              <div><span className="section-kicker">{activeHazard.label.toUpperCase()} OPERATIONAL MAP</span><h2>Exposure and forecast workspace</h2></div>
+              <div className="map-layer-controls">
+                {(["Risk", "Impact", "Assets"] as const).map((layer) => (
+                  <button key={layer} className={mapLayer === layer ? "selected" : ""} onClick={() => setMapLayer(layer)} aria-pressed={mapLayer === layer}>{layer}</button>
+                ))}
+              </div>
+            </div>
+            <div className={`map-surface map-layer-${mapLayer.toLowerCase()} map-hour-${forecastHour}`}>
+              <div className="map-grid-lines" />
+              <div className="coast-shape" />
+              <div className="bay-water"><span>GALVESTON BAY</span></div>
+              <div className="risk-area risk-high"><span>HOUSTON</span></div>
+              <div className="risk-area risk-medium"><span>CLEAR LAKE</span></div>
+              <div className="query-shape"><span>SELECTED AREA</span></div>
+              <div className="place place-houston"><i /><strong>Houston</strong><small>{weather.condition}</small></div>
+              <div className="place place-galveston"><i /><strong>Galveston</strong><small>Coastal assets</small></div>
+              <div className="place place-clear-lake"><i /><strong>Clear Lake</strong><small>Access corridor</small></div>
+              <div className="map-time"><span>{mapLayer.toUpperCase()} · OPERATING WINDOW</span><strong>NOW + {forecastHour} HOURS</strong></div>
+              <div className="query-toolbar" aria-label="Map exposure query">
+                <span>EXPOSURE QUERY</span>
+                <div>
+                  {(Object.keys(exposureQueries) as ExposureQuery[]).map((query) => (
+                    <button key={query} className={exposureQuery === query ? "query-selected" : ""} onClick={() => setExposureQuery(query)} aria-pressed={exposureQuery === query}>{query}</button>
+                  ))}
+                </div>
+              </div>
+              <div className="exposure-result"><span>SELECTION RESULT</span><strong>{exposureQueries[exposureQuery]}</strong><small>Joined across representative GIS, asset and community records</small></div>
+              <div className="map-legend"><span><i className="legend-high" />High</span><span><i className="legend-medium" />Elevated</span><span><i className="legend-water" />Water</span></div>
+            </div>
+            <div className="forecast-control">
+              <div><span className="section-kicker">TIME-BASED FORECAST</span><strong>{weather.forecast.period} · {weather.forecast.summary}</strong></div>
+              <div className="forecast-track">
+                <input aria-label="Forecast hour" type="range" min="0" max="12" step="3" value={forecastHour} onChange={(event) => setForecastHour(Number(event.target.value))} />
+                <div><span>Now</span><span>+3h</span><span>+6h</span><span>+9h</span><span>+12h</span></div>
+              </div>
+              <div className="forecast-confidence"><span>{assessments.weather.confidence}%</span><small>weather confidence</small></div>
+            </div>
+          </div>
+        </section>
+
         <section className="agent-section" id="agents">
           <div className="section-heading">
             <div><span className="section-kicker">SPECIALIST INTELLIGENCE</span><h2>Four perspectives. One operating picture.</h2></div>
@@ -221,6 +318,39 @@ export default function Home() {
           </div>
         </section>
 
+        <section className="evidence-graph" aria-label="Incident evidence graph">
+          <div className="graph-heading">
+            <div><span className="section-kicker">INCIDENT EVIDENCE GRAPH</span><h2>From live source to governed decision</h2></div>
+            <span><i />{assessments.weather.evidence.length + assessments.infrastructure.evidence.length} linked records · state v{incident.version}</span>
+          </div>
+          <div className="evidence-flow">
+            <article className="flow-node flow-sources">
+              <span className="flow-step">01 · SOURCES</span>
+              {sourceEvidence.map((evidence) => (
+                <div className="source-record" key={evidence.id}><i /><span><strong>{evidence.label}</strong><small>{evidence.id} · {formatTime(evidence.observedAt)} CT</small></span></div>
+              ))}
+            </article>
+            <article className="flow-node">
+              <span className="flow-step">02 · WEATHER CLAIM</span>
+              <strong>{assessments.weather.headline}</strong>
+              <p>{assessments.weather.summary}</p>
+              <small>{assessments.weather.confidence}% confidence · NWS evidence</small>
+            </article>
+            <article className="flow-node flow-infrastructure">
+              <span className="flow-step">03 · EXPOSURE</span>
+              <strong>{assessments.infrastructure.headline}</strong>
+              <p>{assessments.infrastructure.summary}</p>
+              <small>{assets.length} assets assessed · {elevatedAssets} to monitor</small>
+            </article>
+            <article className="flow-node flow-decision">
+              <span className="flow-step">04 · DECISION</span>
+              <strong>{packetQueued ? selectedCourse.title : assessments.operations.headline}</strong>
+              <p>{packetQueued ? "Packet is held for named commander approval. No external effect has been released." : assessments.operations.summary}</p>
+              <button onClick={() => setDecisionOpen(true)}>{packetQueued ? "Reopen packet" : "Review decision packet"} →</button>
+            </article>
+          </div>
+        </section>
+
         <div className="operations-grid">
           <section className="asset-panel" id="assets">
             <div className="panel-heading">
@@ -261,6 +391,31 @@ export default function Home() {
           </section>
         </div>
 
+        <section className="action-panel" id="actions">
+          <div className="graph-heading">
+            <div><span className="section-kicker">DECISION-TO-OUTCOME CHAIN</span><h2>One governed operational thread</h2></div>
+            <span className="action-gate">External effects held at approval gate</span>
+          </div>
+          <div className="action-chain">
+            {[
+              { stage: "Decision", title: packetQueued ? selectedCourse.title : "Review operational posture", detail: `${selectedOption} · exact evidence state v${incident.version}`, status: packetQueued ? "queued" : "gated" },
+              { stage: "Tasks", title: "Verify critical-asset readiness", detail: `${assets.length} owners · deadlines prepared`, status: "ready" },
+              { stage: "Communications", title: assessments.communications.headline, detail: "Audience and release conditions retained", status: "pending" },
+              { stage: "Outcome", title: "Confirm continuity and access", detail: "Measure acknowledgements and exceptions", status: "measuring" },
+            ].map((item, index) => (
+              <article className="action-stage" key={item.stage}>
+                <div className="stage-index">0{index + 1}</div><span>{item.stage}</span><strong>{item.title}</strong><p>{item.detail}</p><small className={`stage-${item.status}`}>{item.status}</small>
+              </article>
+            ))}
+          </div>
+          <div className="measure-row" aria-label="Operational performance measures">
+            <div className="measure-intro"><span>OPERATIONAL IMPACT</span><strong>Measure the command system, not screen activity</strong></div>
+            {operationalMeasures.map((measure) => (
+              <article key={measure.label}><span>{measure.label}</span><div><strong>{measure.value}</strong><em>{measure.change}</em></div><small>{measure.detail}</small></article>
+            ))}
+          </div>
+        </section>
+
         <section className="timeline-panel" id="timeline">
           <div className="section-heading">
             <div><span className="section-kicker">INCIDENT TIMELINE</span><h2>What Osprey knew, and when</h2></div>
@@ -283,6 +438,33 @@ export default function Home() {
           <p>Live environmental data. Representative infrastructure. No real-world action execution.</p>
         </footer>
       </section>
+
+      {decisionOpen && (
+        <div className="decision-overlay" role="presentation">
+          <section className="decision-drawer" role="dialog" aria-modal="true" aria-labelledby="decision-title">
+            <header>
+              <div><span className="section-kicker">GOVERNED DECISION PACKET · DP-HGX-01</span><h2 id="decision-title">Set the Houston–Galveston operating posture</h2><p>Compare options against the same live weather and representative asset evidence. No task, message or real-world action is released without named human approval.</p></div>
+              <button className="close-button" onClick={() => setDecisionOpen(false)} aria-label="Close decision packet">×</button>
+            </header>
+            <div className="packet-summary">
+              <div><span>EVIDENCE</span><strong>{sourceEvidence.length} live records</strong><small>latest {formatTime(weather.fetchedAt)} CT</small></div>
+              <div><span>ASSETS</span><strong>{assets.length} assessed</strong><small>{elevatedAssets} require monitoring</small></div>
+              <div><span>WEATHER</span><strong>{incident.severity}</strong><small>{assessments.weather.confidence}% confidence</small></div>
+              <div><span>AUTHORITY</span><strong>Commander</strong><small>named approval required</small></div>
+            </div>
+            <div className="option-list">
+              {decisionOptions.map((option) => (
+                <button className={`option-card ${selectedOption === option.id ? "option-selected" : ""}`} key={option.id} onClick={() => setSelectedOption(option.id)} aria-pressed={selectedOption === option.id}>
+                  <span className={`posture posture-${option.posture}`}>{option.posture}</span><strong>{option.title}</strong><p>{option.summary}</p>
+                  <dl><div><dt>Benefit</dt><dd>{option.benefit}</dd></div><div><dt>Trade-off</dt><dd>{option.tradeoff}</dd></div></dl>
+                  <small>{option.id} · incident state v{incident.version}</small>
+                </button>
+              ))}
+            </div>
+            <footer><p><strong>Demonstration boundary:</strong> queuing this packet records no real-world action.</p><button className="secondary-action" onClick={() => setDecisionOpen(false)}>Request more analysis</button><button className="primary-action" onClick={() => { setPacketQueued(true); setDecisionOpen(false); }}>Queue for commander approval</button></footer>
+          </section>
+        </div>
+      )}
     </main>
   );
 }
