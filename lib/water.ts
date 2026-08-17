@@ -1,0 +1,418 @@
+export type FloodCategory = "NORMAL" | "ACTION" | "MINOR" | "MODERATE" | "MAJOR" | "UNKNOWN";
+export type WaterTrend = "RISING" | "FALLING" | "STEADY" | "UNKNOWN";
+
+export interface FloodZoneGeometry {
+  type: "Polygon" | "MultiPolygon";
+  coordinates: number[][][] | number[][][][];
+}
+
+export interface FloodZoneFeature {
+  type: "Feature";
+  id?: string | number;
+  geometry: FloodZoneGeometry;
+  properties: {
+    FLD_ZONE?: string;
+    ZONE_SUBTY?: string;
+    SFHA_TF?: string;
+    [key: string]: unknown;
+  };
+}
+
+export interface FloodZoneCollection {
+  type: "FeatureCollection";
+  features: FloodZoneFeature[];
+}
+
+export interface RiverGauge {
+  id: string;
+  usgsId: string | null;
+  name: string;
+  latitude: number;
+  longitude: number;
+  observedValue: number | null;
+  observedUnit: string;
+  observedAt: string;
+  quality: string;
+  category: FloodCategory;
+  trend: WaterTrend;
+  changeSixHours: number | null;
+  actionStage: number | null;
+  minorStage: number | null;
+  moderateStage: number | null;
+  majorStage: number | null;
+  forecastValue: number | null;
+  forecastAt: string | null;
+  forecastCategory: FloodCategory;
+  percentToAction: number | null;
+  impact: string | null;
+  source: "NOAA NWPS + USGS";
+}
+
+export interface CoastalStation {
+  id: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+  observedM: number | null;
+  predictedM: number | null;
+  anomalyM: number | null;
+  observedAt: string;
+  quality: string;
+  trend: WaterTrend;
+  source: "NOAA CO-OPS";
+}
+
+export interface WaterIntelligence {
+  riverGauges: RiverGauge[];
+  coastalStations: CoastalStation[];
+  floodZones: FloodZoneCollection;
+  floodZoneStatus: "LIVE" | "UNAVAILABLE" | "DEMO";
+  highestCategory: FloodCategory;
+  fetchedAt: string;
+  isLive: boolean;
+  warnings: string[];
+}
+
+const NWPS_BASE = "https://api.water.noaa.gov/nwps/v1";
+const USGS_BASE = "https://api.waterdata.usgs.gov/ogcapi/v0/collections/continuous/items";
+const USGS_LATEST_BASE = "https://api.waterdata.usgs.gov/ogcapi/v0/collections/latest-continuous/items";
+const COOPS_BASE = "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter";
+const FEMA_FLOOD_LAYER = "https://hazards.fema.gov/gis/nfhl/rest/services/public/NFHL/MapServer/28/query";
+
+const selectedGaugeCatalog = [
+  { lid: "BBST2", usgsId: "08074000", name: "Buffalo Bayou at Shepherd Drive", latitude: 29.76, longitude: -95.4083, action: 17, minor: 28, moderate: 29.5, major: 32 },
+  { lid: "HBMT2", usgsId: "08075000", name: "Brays Bayou at Houston", latitude: 29.6969, longitude: -95.4122, action: null, minor: null, moderate: null, major: null },
+  { lid: "HSIT2", usgsId: "08075500", name: "Sims Bayou at Houston", latitude: 29.674, longitude: -95.289, action: null, minor: null, moderate: null, major: null },
+  { lid: "HMMT2", usgsId: "08069500", name: "West Fork San Jacinto River near Humble", latitude: 30.026, longitude: -95.258, action: null, minor: null, moderate: null, major: null },
+  { lid: "HCCT2", usgsId: "08077600", name: "Clear Creek near Friendswood", latitude: 29.517, longitude: -95.179, action: null, minor: null, moderate: null, major: null },
+];
+const selectedCoastalStations = [
+  { id: "8771450", name: "Galveston Pier 21", latitude: 29.31, longitude: -94.793 },
+  { id: "8770613", name: "Morgan's Point", latitude: 29.6817, longitude: -94.985 },
+];
+
+const categoryRank: Record<FloodCategory, number> = {
+  UNKNOWN: 0,
+  NORMAL: 1,
+  ACTION: 2,
+  MINOR: 3,
+  MODERATE: 4,
+  MAJOR: 5,
+};
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" ? value as Record<string, unknown> : {};
+}
+
+function numberOrNull(value: unknown): number | null {
+  if (value == null || value === "") return null;
+  const number = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function textOr(value: unknown, fallback = "") {
+  return typeof value === "string" && value.trim() ? value : fallback;
+}
+
+function normalizeCategory(value: unknown): FloodCategory {
+  const category = textOr(value).toUpperCase().replace(/\s+/g, "_");
+  if (category.includes("MAJOR")) return "MAJOR";
+  if (category.includes("MODERATE")) return "MODERATE";
+  if (category.includes("MINOR")) return "MINOR";
+  if (category.includes("ACTION")) return "ACTION";
+  if (/NORMAL|NO_FLOODING|BELOW/.test(category)) return "NORMAL";
+  return "UNKNOWN";
+}
+
+function trendFor(values: number[]): { trend: WaterTrend; change: number | null } {
+  if (values.length < 2) return { trend: "UNKNOWN", change: null };
+  const change = Number((values.at(-1)! - values[0]).toFixed(2));
+  if (change > 0.05) return { trend: "RISING", change };
+  if (change < -0.05) return { trend: "FALLING", change };
+  return { trend: "STEADY", change };
+}
+
+async function fetchJson(url: string, timeoutMs = 8500): Promise<unknown> {
+  const response = await fetch(url, {
+    headers: { Accept: "application/json", "User-Agent": "Osprey incident intelligence/1.0" },
+    signal: AbortSignal.timeout(timeoutMs),
+    cache: "no-store",
+  });
+  if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+  return response.json();
+}
+
+async function fetchGaugeDetails() {
+  const results = await Promise.allSettled(selectedGaugeCatalog.map((gauge) => fetchJson(`${NWPS_BASE}/gauges/${gauge.lid}`, 6000)));
+  return results.flatMap((result) => result.status === "fulfilled" ? [result.value] : []);
+}
+
+async function fetchUsgsHistories(usgsIds: string[]) {
+  if (usgsIds.length === 0) return new Map<string, { values: number[]; latestAt: string; quality: string }>();
+  const locationIds = usgsIds.map((id) => `USGS-${id}`).join(",");
+  const query = `f=json&monitoring_location_id=${encodeURIComponent(locationIds)}&parameter_code=00065&limit=500`;
+  let payload: Record<string, unknown>;
+  try {
+    payload = asRecord(await fetchJson(`${USGS_BASE}?${query}&time=PT6H`, 6500));
+  } catch {
+    payload = asRecord(await fetchJson(`${USGS_LATEST_BASE}?${query}`, 8500));
+  }
+  const features = Array.isArray(payload.features) ? payload.features : [];
+  const grouped = new Map<string, { points: { time: string; value: number; quality: string }[] }>();
+  for (const item of features) {
+    const properties = asRecord(asRecord(item).properties);
+    const locationId = textOr(properties.monitoring_location_id).replace(/^USGS-/, "");
+    const value = numberOrNull(properties.value);
+    const time = textOr(properties.time);
+    if (!locationId || value == null || !time) continue;
+    const group = grouped.get(locationId) ?? { points: [] };
+    group.points.push({ time, value, quality: textOr(properties.approval_status, "Provisional") });
+    grouped.set(locationId, group);
+  }
+  return new Map([...grouped].map(([id, group]) => {
+    const points = group.points.sort((a, b) => Date.parse(a.time) - Date.parse(b.time));
+    const latest = points.at(-1)!;
+    return [id, { values: points.map((point) => point.value), latestAt: latest.time, quality: latest.quality }];
+  }));
+}
+
+function gaugeFrom(detailValue: unknown, histories: Map<string, { values: number[]; latestAt: string; quality: string }>): RiverGauge | null {
+  const detail = asRecord(detailValue);
+  const status = asRecord(detail.status);
+  const observed = asRecord(status.observed);
+  const forecast = asRecord(status.forecast);
+  const flood = asRecord(detail.flood);
+  const categories = asRecord(flood.categories);
+  const categoryStage = (key: string) => numberOrNull(asRecord(categories[key]).stage);
+  const id = textOr(detail.lid, textOr(detail.id));
+  const usgsId = textOr(detail.usgsId) || null;
+  const latitude = numberOrNull(detail.latitude);
+  const longitude = numberOrNull(detail.longitude);
+  if (!id || latitude == null || longitude == null) return null;
+  const history = usgsId ? histories.get(usgsId) : undefined;
+  const observedValue = history?.values.at(-1) ?? numberOrNull(observed.primary);
+  const actionStage = categoryStage("action");
+  const impactItems = Array.isArray(flood.impacts) ? flood.impacts : Array.isArray(detail.impacts) ? detail.impacts : [];
+  const closestImpact = impactItems
+    .map((item) => asRecord(item))
+    .filter((item) => textOr(item.statement))
+    .sort((a, b) => (numberOrNull(a.stage) ?? Infinity) - (numberOrNull(b.stage) ?? Infinity))[0];
+  const trend = trendFor(history?.values ?? []);
+  const minorStage = categoryStage("minor");
+  const moderateStage = categoryStage("moderate");
+  const majorStage = categoryStage("major");
+  const derivedCategory: FloodCategory = observedValue == null
+    ? "UNKNOWN"
+    : majorStage != null && observedValue >= majorStage
+      ? "MAJOR"
+      : moderateStage != null && observedValue >= moderateStage
+        ? "MODERATE"
+        : minorStage != null && observedValue >= minorStage
+          ? "MINOR"
+          : actionStage != null && observedValue >= actionStage
+            ? "ACTION"
+            : "NORMAL";
+  return {
+    id,
+    usgsId,
+    name: textOr(detail.name, id),
+    latitude,
+    longitude,
+    observedValue,
+    observedUnit: textOr(observed.primaryUnit, textOr(flood.stageUnits, "ft")),
+    observedAt: history?.latestAt ?? textOr(observed.validTime, new Date().toISOString()),
+    quality: history?.quality ?? "NWPS provisional",
+    category: normalizeCategory(observed.floodCategory) === "UNKNOWN" ? derivedCategory : normalizeCategory(observed.floodCategory),
+    trend: trend.trend,
+    changeSixHours: trend.change,
+    actionStage,
+    minorStage,
+    moderateStage,
+    majorStage,
+    forecastValue: numberOrNull(forecast.primary),
+    forecastAt: textOr(forecast.validTime) || null,
+    forecastCategory: normalizeCategory(forecast.floodCategory),
+    percentToAction: observedValue != null && actionStage != null && actionStage > 0
+      ? Math.max(0, Math.round((observedValue / actionStage) * 100))
+      : null,
+    impact: closestImpact ? textOr(closestImpact.statement) : null,
+    source: "NOAA NWPS + USGS",
+  };
+}
+
+async function fetchRiverGauges(): Promise<RiverGauge[]> {
+  const [detailResult, historyResult] = await Promise.allSettled([
+    fetchGaugeDetails(),
+    fetchUsgsHistories(selectedGaugeCatalog.map((gauge) => gauge.usgsId)),
+  ]);
+  const details = detailResult.status === "fulfilled" ? detailResult.value : [];
+  const histories = historyResult.status === "fulfilled"
+    ? historyResult.value
+    : new Map<string, { values: number[]; latestAt: string; quality: string }>();
+  const detailByLid = new Map(details.map((detail) => [textOr(asRecord(detail).lid), detail]));
+  return selectedGaugeCatalog.map((catalog) => {
+    const fallback = {
+      lid: catalog.lid,
+      usgsId: catalog.usgsId,
+      name: catalog.name,
+      latitude: catalog.latitude,
+      longitude: catalog.longitude,
+      status: { observed: {}, forecast: {} },
+      flood: {
+        stageUnits: "ft",
+        categories: {
+          action: { stage: catalog.action },
+          minor: { stage: catalog.minor },
+          moderate: { stage: catalog.moderate },
+          major: { stage: catalog.major },
+        },
+      },
+    };
+    return gaugeFrom(detailByLid.get(catalog.lid) ?? fallback, histories);
+  }).filter((gauge): gauge is RiverGauge => Boolean(gauge && gauge.observedValue != null));
+}
+
+async function fetchCoastalStation(station: typeof selectedCoastalStations[number]): Promise<CoastalStation> {
+  const common = `station=${station.id}&datum=MLLW&time_zone=gmt&units=metric&application=Osprey&format=json`;
+  const [observationValue, predictionValue] = await Promise.all([
+    fetchJson(`${COOPS_BASE}?date=latest&product=water_level&${common}`),
+    fetchJson(`${COOPS_BASE}?date=today&range=24&product=predictions&interval=h&${common}`),
+  ]);
+  const observationPayload = asRecord(observationValue);
+  const predictionPayload = asRecord(predictionValue);
+  const observation = asRecord(Array.isArray(observationPayload.data) ? observationPayload.data[0] : null);
+  const observedM = numberOrNull(observation.v);
+  const observedAt = textOr(observation.t).replace(" ", "T") + "Z";
+  const predictionItems = (Array.isArray(predictionPayload.predictions) ? predictionPayload.predictions : [])
+    .map((item) => asRecord(item))
+    .filter((item) => numberOrNull(item.v) != null && textOr(item.t));
+  const observationTime = Date.parse(observedAt);
+  const nearest = predictionItems.sort((a, b) =>
+    Math.abs(Date.parse(`${textOr(a.t).replace(" ", "T")}Z`) - observationTime)
+    - Math.abs(Date.parse(`${textOr(b.t).replace(" ", "T")}Z`) - observationTime))[0];
+  const predictedM = nearest ? numberOrNull(nearest.v) : null;
+  const anomalyM = observedM != null && predictedM != null ? Number((observedM - predictedM).toFixed(2)) : null;
+  const futurePredictions = predictionItems
+    .map((item) => ({ time: Date.parse(`${textOr(item.t).replace(" ", "T")}Z`), value: numberOrNull(item.v) }))
+    .filter((item): item is { time: number; value: number } => item.value != null && item.time >= observationTime)
+    .slice(0, 3)
+    .map((item) => item.value);
+  return {
+    ...station,
+    observedM,
+    predictedM,
+    anomalyM,
+    observedAt,
+    quality: textOr(observation.f, "Preliminary"),
+    trend: trendFor([observedM, ...futurePredictions].filter((value): value is number => value != null)).trend,
+    source: "NOAA CO-OPS",
+  };
+}
+
+async function fetchCoastalStations() {
+  const results = await Promise.allSettled(selectedCoastalStations.map(fetchCoastalStation));
+  return results.flatMap((result) => result.status === "fulfilled" ? [result.value] : []);
+}
+
+async function fetchFloodZones(): Promise<FloodZoneCollection> {
+  const parameters = new URLSearchParams({
+    where: "SFHA_TF='T'",
+    geometry: "-95.91,28.98,-94.55,30.15",
+    geometryType: "esriGeometryEnvelope",
+    inSR: "4326",
+    outSR: "4326",
+    outFields: "FLD_ZONE,ZONE_SUBTY,SFHA_TF",
+    returnGeometry: "true",
+    maxAllowableOffset: "0.003",
+    geometryPrecision: "4",
+    resultRecordCount: "500",
+    f: "geojson",
+  });
+  const payload = asRecord(await fetchJson(`${FEMA_FLOOD_LAYER}?${parameters}`, 7000));
+  const features = Array.isArray(payload.features) ? payload.features : [];
+  return {
+    type: "FeatureCollection",
+    features: features.filter((feature): feature is FloodZoneFeature => {
+      const geometry = asRecord(asRecord(feature).geometry);
+      return geometry.type === "Polygon" || geometry.type === "MultiPolygon";
+    }),
+  };
+}
+
+export async function fetchWaterIntelligence(): Promise<WaterIntelligence> {
+  const fetchedAt = new Date().toISOString();
+  const [riverResult, coastalResult, zoneResult] = await Promise.allSettled([
+    fetchRiverGauges(),
+    fetchCoastalStations(),
+    fetchFloodZones(),
+  ]);
+  const riverGauges = riverResult.status === "fulfilled" ? riverResult.value : [];
+  const coastalStations = coastalResult.status === "fulfilled" ? coastalResult.value : [];
+  const floodZones = zoneResult.status === "fulfilled" ? zoneResult.value : { type: "FeatureCollection" as const, features: [] };
+  const warnings: string[] = [];
+  if (riverGauges.length === 0) warnings.push("River gauge feed temporarily unavailable");
+  if (coastalStations.length === 0) warnings.push("Coastal water-level feed temporarily unavailable");
+  if (zoneResult.status === "rejected") warnings.push("FEMA flood-zone overlay temporarily unavailable");
+  const categories = riverGauges.flatMap((gauge) => [gauge.category, gauge.forecastCategory]);
+  const highestCategory = categories.sort((a, b) => categoryRank[b] - categoryRank[a])[0] ?? "UNKNOWN";
+  return {
+    riverGauges,
+    coastalStations,
+    floodZones,
+    floodZoneStatus: zoneResult.status === "fulfilled" ? "LIVE" : "UNAVAILABLE",
+    highestCategory,
+    fetchedAt,
+    isLive: riverGauges.length > 0 || coastalStations.length > 0,
+    warnings,
+  };
+}
+
+export const demoWaterIntelligence: WaterIntelligence = {
+  riverGauges: [
+    {
+      id: "BBST2",
+      usgsId: "08074000",
+      name: "Buffalo Bayou at Houston",
+      latitude: 29.761,
+      longitude: -95.409,
+      observedValue: 1.45,
+      observedUnit: "ft",
+      observedAt: "2026-08-17T16:00:00.000Z",
+      quality: "Representative preview",
+      category: "NORMAL",
+      trend: "STEADY",
+      changeSixHours: 0.02,
+      actionStage: 17,
+      minorStage: 28,
+      moderateStage: 29.5,
+      majorStage: 32,
+      forecastValue: null,
+      forecastAt: null,
+      forecastCategory: "UNKNOWN",
+      percentToAction: 9,
+      impact: "Flood impacts begin above published action and flood stages.",
+      source: "NOAA NWPS + USGS",
+    },
+  ],
+  coastalStations: [
+    {
+      id: "8771450",
+      name: "Galveston Pier 21",
+      latitude: 29.31,
+      longitude: -94.793,
+      observedM: 0.14,
+      predictedM: 0.11,
+      anomalyM: 0.03,
+      observedAt: "2026-08-17T16:00:00.000Z",
+      quality: "Representative preview",
+      trend: "RISING",
+      source: "NOAA CO-OPS",
+    },
+  ],
+  floodZones: { type: "FeatureCollection", features: [] },
+  floodZoneStatus: "DEMO",
+  highestCategory: "NORMAL",
+  fetchedAt: "2026-08-17T16:01:00.000Z",
+  isLive: false,
+  warnings: [],
+};

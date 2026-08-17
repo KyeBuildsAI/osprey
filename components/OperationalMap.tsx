@@ -12,11 +12,12 @@ import {
 import mapLibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import type { Feature, FeatureCollection, GeoJsonObject, Geometry, Point, Polygon } from "geojson";
 import type { AlertGeometry, InfrastructureAsset, WeatherAlert } from "@/lib/intelligence";
+import type { WaterIntelligence } from "@/lib/water";
 
 type MapLayer = "Risk" | "Impact" | "Assets";
 type ExposureQuery = "Radius" | "Polygon" | "Assets";
 type HazardId = "compound" | "flood" | "wind" | "heat";
-type ContextLayer = "Roads" | "Water" | "Rail" | "Places" | "Terrain";
+type ContextLayer = "Roads" | "Water" | "Rail" | "Places" | "Terrain" | "Flood zones";
 
 export interface MapFeatureSelection {
   id: string;
@@ -35,7 +36,7 @@ export interface MapFeatureSelection {
 const HOUSTON: [number, number] = [-95.3698, 29.7604];
 const BASEMAP_STYLE = "https://tiles.openfreemap.org/styles/bright";
 const TERRAIN_TILES = "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png";
-const CONTEXT_LAYERS: ContextLayer[] = ["Roads", "Water", "Rail", "Places", "Terrain"];
+const CONTEXT_LAYERS: ContextLayer[] = ["Roads", "Water", "Rail", "Places", "Terrain", "Flood zones"];
 const OSPREY_LAYER_PREFIX = "osprey-";
 setWorkerUrl(mapLibreWorkerUrl);
 
@@ -122,6 +123,46 @@ function assetCollection(assets: InfrastructureAsset[]): FeatureCollection<Point
   };
 }
 
+function waterStationCollection(water: WaterIntelligence): FeatureCollection<Point> {
+  return {
+    type: "FeatureCollection",
+    features: [
+      ...water.riverGauges.map((gauge) => ({
+        type: "Feature" as const,
+        id: gauge.id,
+        geometry: { type: "Point" as const, coordinates: [gauge.longitude, gauge.latitude] },
+        properties: {
+          id: gauge.id,
+          ref: gauge.usgsId ?? gauge.id,
+          name: gauge.name,
+          type: "River gauge",
+          category: gauge.category,
+          reading: `${gauge.observedValue ?? "—"} ${gauge.observedUnit}`,
+          trend: gauge.trend,
+          threshold: gauge.actionStage == null ? "Action stage unavailable" : `${gauge.percentToAction ?? "—"}% of ${gauge.actionStage} ${gauge.observedUnit} action stage`,
+          sourceName: gauge.source,
+        },
+      })),
+      ...water.coastalStations.map((station) => ({
+        type: "Feature" as const,
+        id: station.id,
+        geometry: { type: "Point" as const, coordinates: [station.longitude, station.latitude] },
+        properties: {
+          id: station.id,
+          ref: station.id,
+          name: station.name,
+          type: "Coastal station",
+          category: "COASTAL",
+          reading: `${station.observedM ?? "—"} m MLLW`,
+          trend: station.trend,
+          threshold: station.anomalyM == null ? "Tide anomaly unavailable" : `${station.anomalyM >= 0 ? "+" : ""}${station.anomalyM} m versus prediction`,
+          sourceName: station.source,
+        },
+      })),
+    ],
+  };
+}
+
 function queryFeature(query: ExposureQuery): Feature<Polygon> {
   return {
     type: "Feature",
@@ -161,6 +202,8 @@ function property(feature: MapGeoJSONFeature, ...keys: string[]) {
 function featureCategory(feature: MapGeoJSONFeature) {
   if (feature.source === "osprey-assets") return "Critical asset";
   if (feature.source === "osprey-warnings") return "Weather warning";
+  if (feature.source === "osprey-water-stations") return property(feature, "type") || "Water station";
+  if (feature.source === "osprey-flood-zones") return "FEMA flood hazard zone";
 
   const descriptor = `${feature.sourceLayer ?? ""} ${feature.layer.id} ${property(feature, "class", "subclass", "type", "kind", "brunnel")}`.toLowerCase();
   if (property(feature, "bridge") || /\bbridge\b/.test(descriptor)) return "Bridge";
@@ -189,13 +232,16 @@ function identifyFeature(
   latitude: number,
 ): MapFeatureSelection {
   const category = feature ? featureCategory(feature) : "Terrain location";
-  const classValue = feature ? property(feature, "class", "subclass", "type", "kind", "brunnel") : "";
+  const classValue = feature ? property(feature, "category", "FLD_ZONE", "class", "subclass", "type", "kind", "brunnel") : "";
   const reference = feature ? property(feature, "ref", "network", "icao", "iata") || null : null;
   const name = feature
     ? property(feature, "name_en", "name:en", "name", "ref") || `Unnamed ${category.toLowerCase()}`
     : "Selected terrain point";
   const structure = feature ? property(feature, "brunnel", "bridge", "tunnel") : "";
   const detailParts = [
+    feature ? property(feature, "reading") : "",
+    feature ? property(feature, "trend") : "",
+    feature ? property(feature, "threshold", "ZONE_SUBTY") : "",
     classValue ? titleCase(classValue) : "",
     structure ? titleCase(structure) : "",
     feature ? titleCase(feature.sourceLayer ?? feature.layer.id) : "Ground elevation sample",
@@ -204,6 +250,10 @@ function identifyFeature(
     ? "Osprey demonstration asset"
     : feature?.source === "osprey-warnings"
       ? "National Weather Service"
+      : feature?.source === "osprey-water-stations"
+        ? property(feature, "sourceName") || "NOAA / USGS"
+        : feature?.source === "osprey-flood-zones"
+          ? "FEMA National Flood Hazard Layer"
       : "OpenStreetMap context · OpenFreeMap tiles";
 
   return {
@@ -222,7 +272,7 @@ function identifyFeature(
 }
 
 function isInspectable(feature: MapGeoJSONFeature) {
-  if (feature.source === "osprey-assets" || feature.source === "osprey-warnings") return true;
+  if (["osprey-assets", "osprey-warnings", "osprey-water-stations", "osprey-flood-zones"].includes(String(feature.source))) return true;
   if (feature.layer.id.startsWith(OSPREY_LAYER_PREFIX)) return false;
   const category = featureCategory(feature);
   return category !== "Map feature" || Boolean(property(feature, "name", "name_en", "name:en", "ref"));
@@ -231,6 +281,7 @@ function isInspectable(feature: MapGeoJSONFeature) {
 export function OperationalMap({
   alerts,
   assets,
+  water,
   layer,
   forecastHour,
   hazard,
@@ -239,6 +290,7 @@ export function OperationalMap({
 }: {
   alerts: WeatherAlert[];
   assets: InfrastructureAsset[];
+  water: WaterIntelligence;
   layer: MapLayer;
   forecastHour: number;
   hazard: HazardId;
@@ -248,7 +300,7 @@ export function OperationalMap({
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const selectionSequenceRef = useRef(0);
-  const latestRef = useRef({ alerts, assets, onFeatureSelect });
+  const latestRef = useRef({ alerts, assets, water, onFeatureSelect });
   const [query, setQuery] = useState<ExposureQuery>("Polygon");
   const [mapReady, setMapReady] = useState(false);
   const [mapError, setMapError] = useState(false);
@@ -259,6 +311,7 @@ export function OperationalMap({
     Rail: true,
     Places: true,
     Terrain: false,
+    "Flood zones": true,
   });
 
   const visibleAlerts = useMemo(() => alerts.filter((alert) => matchesHazard(alert, hazard)), [alerts, hazard]);
@@ -275,8 +328,8 @@ export function OperationalMap({
     : `${selectedAssets.length} assets inside ${query === "Radius" ? "75 km radius" : "operational polygon"}`;
 
   useEffect(() => {
-    latestRef.current = { alerts, assets, onFeatureSelect };
-  }, [alerts, assets, onFeatureSelect]);
+    latestRef.current = { alerts, assets, water, onFeatureSelect };
+  }, [alerts, assets, onFeatureSelect, water]);
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -319,6 +372,8 @@ export function OperationalMap({
       map.addSource("osprey-warnings", { type: "geojson", data: warningCollection(latestRef.current.alerts) });
       map.addSource("osprey-query", { type: "geojson", data: queryFeature("Polygon") });
       map.addSource("osprey-assets", { type: "geojson", data: assetCollection(latestRef.current.assets) });
+      map.addSource("osprey-water-stations", { type: "geojson", data: waterStationCollection(latestRef.current.water) });
+      map.addSource("osprey-flood-zones", { type: "geojson", data: latestRef.current.water.floodZones as unknown as GeoJsonObject });
       map.addSource("osprey-selection", { type: "geojson", data: selectionFeature(HOUSTON[0], HOUSTON[1]) });
       map.addLayer({
         id: "osprey-query-fill",
@@ -343,6 +398,33 @@ export function OperationalMap({
         type: "line",
         source: "osprey-warnings",
         paint: { "line-color": "#ba4a2e", "line-width": 2.5 },
+      });
+      map.addLayer({
+        id: "osprey-flood-zone-fill",
+        type: "fill",
+        source: "osprey-flood-zones",
+        paint: {
+          "fill-color": ["match", ["get", "FLD_ZONE"], "VE", "#8b4770", "AE", "#438f9a", "A", "#5d9ca5", "#79b4b3"],
+          "fill-opacity": 0.18,
+        },
+      }, firstLabelLayer);
+      map.addLayer({
+        id: "osprey-flood-zone-line",
+        type: "line",
+        source: "osprey-flood-zones",
+        paint: { "line-color": "#367f89", "line-width": 0.8, "line-opacity": 0.65 },
+      }, firstLabelLayer);
+      map.addLayer({
+        id: "osprey-water-stations",
+        type: "circle",
+        source: "osprey-water-stations",
+        paint: {
+          "circle-radius": ["match", ["get", "category"], "MAJOR", 11, "MODERATE", 10, "MINOR", 9, "ACTION", 8, "COASTAL", 8, 7],
+          "circle-color": ["match", ["get", "category"], "MAJOR", "#9f2929", "MODERATE", "#ce5534", "MINOR", "#df8e36", "ACTION", "#edb84d", "COASTAL", "#316f91", "#3e8b78"],
+          "circle-stroke-color": "#ffffff",
+          "circle-stroke-width": 2.5,
+          "circle-opacity": 0.98,
+        },
       });
       map.addLayer({
         id: "osprey-assets",
@@ -374,10 +456,12 @@ export function OperationalMap({
           [event.point.x - 5, event.point.y - 5],
           [event.point.x + 5, event.point.y + 5],
         ]);
+        const waterStation = rendered.find((feature) => feature.source === "osprey-water-stations");
         const asset = rendered.find((feature) => feature.source === "osprey-assets");
+        const floodZone = rendered.find((feature) => feature.source === "osprey-flood-zones");
         const context = rendered.find((feature) => isInspectable(feature) && feature.source !== "osprey-warnings");
         const warning = rendered.find((feature) => feature.source === "osprey-warnings");
-        const selection = identifyFeature(asset ?? context ?? warning, event.lngLat.lng, event.lngLat.lat);
+        const selection = identifyFeature(waterStation ?? asset ?? floodZone ?? context ?? warning, event.lngLat.lng, event.lngLat.lat);
         const sequence = ++selectionSequenceRef.current;
         setSelectedFeature(selection);
         latestRef.current.onFeatureSelect?.(selection);
@@ -417,11 +501,13 @@ export function OperationalMap({
     if (!map || !mapReady) return;
     setSourceData(map, "osprey-warnings", warningCollection(visibleAlerts));
     setSourceData(map, "osprey-assets", assetCollection(assets));
+    setSourceData(map, "osprey-water-stations", waterStationCollection(water));
+    setSourceData(map, "osprey-flood-zones", water.floodZones as unknown as GeoJsonObject);
     setSourceData(map, "osprey-query", queryFeature(query));
     map.setPaintProperty("osprey-warning-fill", "fill-opacity", layer === "Risk" ? 0.42 : layer === "Impact" ? 0.28 : 0.12);
     map.setPaintProperty("osprey-assets", "circle-radius", layer === "Assets" ? ["match", ["get", "criticality"], "CRITICAL", 13, 10] : ["match", ["get", "criticality"], "CRITICAL", 10, 8]);
     map.setPaintProperty("osprey-query-fill", "fill-opacity", query === "Assets" ? 0.015 : 0.08 + forecastHour * 0.002);
-  }, [assets, forecastHour, layer, mapReady, query, visibleAlerts]);
+  }, [assets, forecastHour, layer, mapReady, query, visibleAlerts, water]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -434,6 +520,8 @@ export function OperationalMap({
       if (category) map.setLayoutProperty(styleLayer.id, "visibility", contextLayers[category] ? "visible" : "none");
     }
     map.setLayoutProperty("osprey-terrain-hillshade", "visibility", contextLayers.Terrain ? "visible" : "none");
+    map.setLayoutProperty("osprey-flood-zone-fill", "visibility", contextLayers["Flood zones"] ? "visible" : "none");
+    map.setLayoutProperty("osprey-flood-zone-line", "visibility", contextLayers["Flood zones"] ? "visible" : "none");
     map.setTerrain(contextLayers.Terrain ? { source: "osprey-terrain", exaggeration: 1.25 } : null);
     map.easeTo({ pitch: contextLayers.Terrain ? 34 : 0, duration: 450 });
   }, [contextLayers, mapReady]);
@@ -467,9 +555,9 @@ export function OperationalMap({
         <div className="exposure-result">
           <span>LIVE SPATIAL RESULT</span>
           <strong>{resultTitle}</strong>
-          <small>{geospatialAlerts.length === 0 ? "No active NWS warning polygons" : `${geospatialAlerts.length} NWS warning polygons`} · {warningExposures.length} direct intersections · {elevationSamples}/{assets.length} USGS asset elevations</small>
+          <small>{geospatialAlerts.length === 0 ? "No active NWS warning polygons" : `${geospatialAlerts.length} NWS warning polygons`} · {warningExposures.length} asset intersections · {water.riverGauges.length + water.coastalStations.length} water stations · {water.floodZones.features.length} flood-zone features · {elevationSamples}/{assets.length} USGS elevations</small>
         </div>
-        <div className="map-legend"><span><i className="legend-high" />NWS warning</span><span><i className="legend-medium" />Monitor</span><span><i className="legend-normal" />Normal</span><span><i className="legend-terrain" />Terrain</span></div>
+        <div className="map-legend"><span><i className="legend-high" />NWS warning</span><span><i className="legend-water" />Flood zone</span><span><i className="legend-normal" />Water station</span><span><i className="legend-terrain" />Terrain</span></div>
       </div>
 
       <aside className="feature-inspector" aria-live="polite">

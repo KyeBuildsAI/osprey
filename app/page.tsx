@@ -95,13 +95,13 @@ export default function Home() {
       const response = await fetch("/api/intelligence", { cache: "no-store" });
       const payload = await response.json() as IncidentIntelligence | { error?: string };
       if (!response.ok || !("incident" in payload)) {
-        throw new Error("error" in payload ? payload.error : "The live weather source did not respond.");
+        throw new Error("error" in payload ? payload.error : "The live intelligence sources did not respond.");
       }
       setIntelligence(payload);
       setRefreshState("idle");
     } catch (error) {
       setRefreshState("error");
-      setErrorMessage(error instanceof Error ? error.message : "The live weather source did not respond.");
+      setErrorMessage(error instanceof Error ? error.message : "The live intelligence sources did not respond.");
     }
   }, []);
 
@@ -112,12 +112,14 @@ export default function Home() {
     return () => window.clearTimeout(initialRefresh);
   }, [refreshIntelligence]);
 
-  const { incident, weather, assessments, assets, timeline } = intelligence;
+  const { incident, weather, water, assessments, assets, timeline } = intelligence;
   const activeAssessment = assessments[openAgent];
   const elevatedAssets = assets.filter((asset) => asset.exposure !== "NORMAL").length;
   const activeHazard = hazardViews.find((hazard) => hazard.id === activeHazardId) ?? hazardViews[0];
   const selectedCourse = decisionOptions.find((option) => option.id === selectedOption) ?? decisionOptions[1];
-  const sourceEvidence = assessments.weather.evidence.slice(0, 3);
+  const sourceEvidence = [assessments.weather.evidence[0], ...assessments.infrastructure.evidence.slice(0, 2)].filter(Boolean);
+  const leadGauge = [...water.riverGauges].sort((a, b) => (b.percentToAction ?? -1) - (a.percentToAction ?? -1))[0];
+  const leadCoast = [...water.coastalStations].sort((a, b) => Math.abs(b.anomalyM ?? 0) - Math.abs(a.anomalyM ?? 0))[0];
 
   const openInfrastructureContext = useCallback(() => {
     setOpenAgent("infrastructure");
@@ -160,7 +162,7 @@ export default function Home() {
 
         {refreshState === "error" && (
           <div className="source-warning" role="status">
-            <strong>Live NWS refresh paused.</strong>
+            <strong>Live intelligence refresh paused.</strong>
             <span>{errorMessage} The last available representative snapshot remains visible.</span>
             <button onClick={() => void refreshIntelligence()}>Try again</button>
           </div>
@@ -170,7 +172,7 @@ export default function Home() {
           <div className="hero-main">
             <div className="eyebrow-row"><span>TEXAS GULF COAST</span><i />SHARED INCIDENT STATE v{incident.version}</div>
             <h1>Houston–Galveston<br />Incident Room</h1>
-            <p>Live weather evidence enters one shared state, where four specialist agents assess conditions, infrastructure exposure, operations and communications.</p>
+            <p>Live weather, river, coastal and flood-zone evidence enters one shared state, where four specialist agents assess conditions, infrastructure exposure, operations and communications.</p>
           </div>
           <div className="hero-state">
             <span>CURRENT OPERATIONAL STATE</span>
@@ -197,9 +199,21 @@ export default function Home() {
           <div className="weather-stat alert-stat"><span>ACTIVE ALERTS</span><strong>{weather.activeAlerts.length}</strong></div>
         </section>
 
+        <section className="water-ribbon" aria-label="Live flood and water intelligence">
+          <div className="water-ribbon-lead">
+            <span className={`source-pill ${water.isLive ? "pill-live" : "pill-preview"}`}><i />{water.isLive ? "LIVE WATER" : "CONNECTING"}</span>
+            <strong>Flood &amp; water intelligence</strong>
+            <small>NOAA NWPS · USGS · NOAA CO-OPS · FEMA NFHL</small>
+          </div>
+          <div><span>RIVER GAUGES</span><strong>{water.riverGauges.length}</strong><small>Highest: {water.highestCategory}</small></div>
+          <div><span>LEAD GAUGE</span><strong>{leadGauge?.observedValue ?? "—"} {leadGauge?.observedUnit ?? ""}</strong><small>{leadGauge ? `${leadGauge.name} · ${leadGauge.trend}` : "Awaiting feed"}</small></div>
+          <div><span>COASTAL LEVEL</span><strong>{leadCoast?.observedM ?? "—"} m</strong><small>{leadCoast?.anomalyM == null ? "Awaiting tide comparison" : `${leadCoast.anomalyM >= 0 ? "+" : ""}${leadCoast.anomalyM} m vs predicted`}</small></div>
+          <div><span>FLOOD ZONES</span><strong>{water.floodZoneStatus}</strong><small>{water.floodZoneStatus === "LIVE" ? `${water.floodZones.features.length} mapped features` : "Gauge feeds unaffected"}</small></div>
+        </section>
+
         <section className="shared-state" aria-label="Shared incident state flow">
           <span className="shared-label">ONE SHARED INCIDENT STATE</span>
-          <div><span>NWS evidence</span><i>→</i><span>Weather</span><i>→</i><span>Infrastructure</span><i>→</i><span>Operations</span><i>→</i><span>Communications</span></div>
+          <div><span>NWS + water evidence</span><i>→</i><span>Weather</span><i>→</i><span>Infrastructure</span><i>→</i><span>Operations</span><i>→</i><span>Communications</span></div>
           <small>Each specialist reads the accepted findings before it and publishes evidence-bound output back to the same incident.</small>
         </section>
 
@@ -233,6 +247,7 @@ export default function Home() {
             <OperationalMap
               alerts={weather.activeAlerts}
               assets={assets}
+              water={water}
               layer={mapLayer}
               forecastHour={forecastHour}
               hazard={activeHazard.id}
@@ -248,6 +263,35 @@ export default function Home() {
               <div className="forecast-confidence"><span>{assessments.weather.confidence}%</span><small>weather confidence</small></div>
             </div>
           </div>
+        </section>
+
+        <section className="water-depth-panel" aria-label="River and coastal station detail">
+          <div className="section-heading">
+            <div><span className="section-kicker">FLOOD &amp; WATER INTELLIGENCE v1</span><h2>Live thresholds, trends and tide anomalies</h2></div>
+            <span className={`water-health ${water.warnings.length === 0 ? "water-health-live" : "water-health-partial"}`}><i />{water.warnings.length === 0 ? "ALL SOURCES REPORTING" : `${water.warnings.length} SOURCE NOTICE${water.warnings.length === 1 ? "" : "S"}`}</span>
+          </div>
+          {water.warnings.length > 0 && <div className="water-notices">{water.warnings.map((warning) => <span key={warning}>{warning}</span>)}</div>}
+          <div className="water-station-grid">
+            {water.riverGauges.map((gauge) => (
+              <article className="water-station-card" key={gauge.id}>
+                <header><span>{gauge.id} · RIVER GAUGE</span><b className={`flood-${gauge.category.toLowerCase()}`}>{gauge.category}</b></header>
+                <h3>{gauge.name}</h3>
+                <div className="water-reading"><strong>{gauge.observedValue ?? "—"}</strong><span>{gauge.observedUnit}<small>{gauge.trend} {gauge.changeSixHours == null ? "" : `· ${gauge.changeSixHours >= 0 ? "+" : ""}${gauge.changeSixHours} ${gauge.observedUnit} / 6h`}</small></span></div>
+                <div className="threshold-track"><i style={{ width: `${Math.min(gauge.percentToAction ?? 0, 100)}%` }} /></div>
+                <footer><span>{gauge.actionStage == null ? "Action stage unavailable" : `${gauge.percentToAction ?? "—"}% of ${gauge.actionStage} ${gauge.observedUnit} action stage`}</span><small>{gauge.usgsId ? `USGS ${gauge.usgsId}` : "NWPS"} · {formatTime(gauge.observedAt)} CT</small></footer>
+              </article>
+            ))}
+            {water.coastalStations.map((station) => (
+              <article className="water-station-card coastal-station-card" key={station.id}>
+                <header><span>{station.id} · COASTAL STATION</span><b>CO-OPS</b></header>
+                <h3>{station.name}</h3>
+                <div className="water-reading"><strong>{station.observedM ?? "—"}</strong><span>m MLLW<small>{station.trend} · observed</small></span></div>
+                <div className="coastal-comparison"><span>Predicted <b>{station.predictedM ?? "—"} m</b></span><span>Anomaly <b>{station.anomalyM == null ? "—" : `${station.anomalyM >= 0 ? "+" : ""}${station.anomalyM} m`}</b></span></div>
+                <footer><span>Observed against astronomical tide prediction</span><small>NOAA CO-OPS · {formatTime(station.observedAt)} CT</small></footer>
+              </article>
+            ))}
+          </div>
+          <p className="water-boundary">Operational awareness only. Gauge observations can be provisional; FEMA flood zones describe mapped hazard, not current inundation. Representative assets remain demonstration records until an authoritative asset registry is connected.</p>
         </section>
 
         <section className="agent-section" id="agents">

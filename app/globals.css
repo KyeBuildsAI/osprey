@@ -91,6 +91,46 @@ button { cursor: pointer; }
 .alert-stat { background: #fcf3ef; }
 .alert-stat > strong { color: #b44f32; font-size: 31px; }
 
+.water-ribbon { margin: 12px 36px 0; min-height: 94px; display: grid; grid-template-columns: 1.4fr repeat(4,1fr); border: 1px solid #cddedb; background: #f8fbfa; box-shadow: 0 9px 30px rgba(31,49,42,.035); }
+.water-ribbon > div { min-width: 0; padding: 15px 18px; display: flex; flex-direction: column; justify-content: center; border-right: 1px solid #d8e4e1; }
+.water-ribbon > div:last-child { border-right: 0; }
+.water-ribbon-lead { align-items: flex-start; background: #eef6f4; }
+.water-ribbon-lead > strong { margin-top: 8px; font: 500 17px Georgia, serif; }
+.water-ribbon > div > span:not(.source-pill) { color: #6d817b; font-size: 8px; font-weight: 740; letter-spacing: .12em; }
+.water-ribbon > div > strong { margin-top: 7px; font: 500 20px Georgia, serif; }
+.water-ribbon > div > small { max-width: 230px; margin-top: 4px; overflow: hidden; color: #73847e; font-size: 9px; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+
+.water-depth-panel { margin: 28px 36px 0; }
+.water-health { padding: 7px 9px; color: #596f68; border: 1px solid #d6e1dd; background: #fff; font-size: 9px; font-weight: 730; letter-spacing: .09em; }
+.water-health i { width: 6px; height: 6px; margin-right: 7px; display: inline-block; border-radius: 50%; background: #d89f3d; }
+.water-health-live i { background: var(--green); }
+.water-notices { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 7px; }
+.water-notices span { padding: 7px 9px; color: #865f28; border: 1px solid #ead8b9; background: #faf3e5; font-size: 9px; }
+.water-station-grid { margin-top: 15px; display: grid; grid-template-columns: repeat(auto-fit,minmax(230px,1fr)); border-top: 1px solid var(--line); border-left: 1px solid var(--line); background: #fff; box-shadow: 0 9px 30px rgba(31,49,42,.04); }
+.water-station-card { min-width: 0; min-height: 250px; padding: 17px; display: flex; flex-direction: column; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.water-station-card header { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.water-station-card header > span { color: #70827b; font: 8px var(--font-geist-mono); letter-spacing: .08em; }
+.water-station-card header b { padding: 4px 5px; color: #2b7358; background: #e6f2ec; font-size: 8px; letter-spacing: .07em; }
+.water-station-card header .flood-action { color: #8a5d12; background: #f7edd4; }
+.water-station-card header .flood-minor, .water-station-card header .flood-moderate, .water-station-card header .flood-major { color: #9d3f28; background: #f8e3dd; }
+.water-station-card h3 { min-height: 42px; margin: 14px 0 9px; font: 500 18px/1.15 Georgia, serif; }
+.water-reading { display: flex; align-items: baseline; gap: 8px; }
+.water-reading > strong { font: 500 39px Georgia, serif; letter-spacing: -.04em; }
+.water-reading > span { color: #61766e; font-size: 11px; }
+.water-reading small { margin-top: 3px; display: block; color: #82918b; font-size: 8px; letter-spacing: .07em; }
+.threshold-track { height: 5px; margin-top: 17px; overflow: hidden; background: #e7ece9; }
+.threshold-track i { height: 100%; display: block; background: linear-gradient(90deg,#3f9072,#d9a33f); }
+.water-station-card footer { margin-top: auto; padding-top: 14px; }
+.water-station-card footer span, .water-station-card footer small { display: block; }
+.water-station-card footer span { color: #536a61; font-size: 9px; }
+.water-station-card footer small { margin-top: 5px; color: #8a9691; font: 8px var(--font-geist-mono); }
+.coastal-station-card { background: #f3f8f8; }
+.coastal-station-card header b { color: #2f6b79; background: #dcecef; }
+.coastal-comparison { margin-top: 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+.coastal-comparison span { padding: 8px; color: #74847f; background: rgba(255,255,255,.72); font-size: 8px; }
+.coastal-comparison b { margin-top: 4px; display: block; color: #315b5d; font: 500 14px Georgia, serif; }
+.water-boundary { margin: 0; padding: 10px 12px; color: #7a6b4b; border: 1px solid #e6dbc5; border-top: 0; background: #faf6ed; font-size: 9px; line-height: 1.5; }
+
 .shared-state { margin: 16px 36px 0; padding: 16px 18px; display: grid; grid-template-columns: auto minmax(0, 1fr) 330px; gap: 22px; align-items: center; color: #dcebe5; background: var(--forest); }
 .shared-label { color: #8fb1a5; font-size: 9px; font-weight: 730; letter-spacing: .13em; }
 .shared-state > div { display: flex; align-items: center; gap: 9px; font-size: 11px; }
@@ -407,6 +447,8 @@ button { cursor: pointer; }
 
 @media (max-width: 1180px) {
   .weather-ribbon { grid-template-columns: 1.2fr .7fr 1.2fr repeat(2, .75fr); }
+  .water-ribbon { grid-template-columns: 1.3fr repeat(3,1fr); }
+  .water-ribbon > div:last-child { display: none; }
   .alert-stat { display: none; }
   .shared-state { grid-template-columns: 1fr; gap: 10px; }
   .shared-state > small { max-width: 700px; }
@@ -428,6 +470,8 @@ button { cursor: pointer; }
   .incident-hero { grid-template-columns: 1fr; gap: 24px; }
   .hero-state { max-width: 420px; }
   .weather-ribbon { grid-template-columns: 1.3fr .7fr 1.1fr; }
+  .water-ribbon { grid-template-columns: 1.3fr 1fr 1fr; }
+  .water-ribbon > div:nth-child(4) { display: none; }
   .weather-stat { display: none; }
   .detail-columns { grid-template-columns: 1fr 1fr; }
   .watch-list { grid-column: 1 / -1; border-top: 1px solid var(--line); }
@@ -461,8 +505,11 @@ button { cursor: pointer; }
   .hero-main h1 { font-size: 44px; }
   .hero-main > p { font-size: 14px; }
   .weather-ribbon { margin-inline: 18px; grid-template-columns: 1.25fr .75fr; }
+  .water-ribbon { margin-inline: 18px; grid-template-columns: 1.4fr 1fr; }
+  .water-ribbon > div:nth-child(n+3) { display: none; }
   .condition { grid-column: 1 / -1; border-top: 1px solid var(--line); border-right: 0 !important; }
   .shared-state, .agent-section, .operations-grid, .timeline-panel { margin-left: 18px; margin-right: 18px; }
+  .water-depth-panel { margin-left: 18px; margin-right: 18px; }
   .evidence-graph, .action-panel { margin-left: 18px; margin-right: 18px; }
   .operational-workspace { margin-left: 18px; margin-right: 18px; }
   .shared-state > div { overflow-x: auto; padding-bottom: 4px; }

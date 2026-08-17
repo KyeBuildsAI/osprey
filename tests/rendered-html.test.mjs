@@ -29,7 +29,10 @@ test("server-renders the Houston–Galveston incident room", async () => {
   assert.match(html, /LOADING INFRASTRUCTURE MAP/);
   assert.match(html, /EXPOSURE QUERY/);
   assert.match(html, /NWS warning polygons/);
-  assert.match(html, /USGS asset elevations/);
+  assert.match(html, /USGS elevations/);
+  assert.match(html, /FLOOD &amp; WATER INTELLIGENCE v1/);
+  assert.match(html, /Live thresholds, trends and tide anomalies/);
+  assert.match(html, /NOAA NWPS · USGS · NOAA CO-OPS · FEMA NFHL/);
   assert.match(html, /INFRASTRUCTURE IDENTIFY/);
   assert.match(html, /Click the map to inspect/);
   assert.match(html, /VISIBLE CONTEXT/);

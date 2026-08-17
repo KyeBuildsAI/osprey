@@ -1,16 +1,18 @@
 import { createIncidentIntelligence } from "@/lib/intelligence";
 import { fetchHoustonWeather } from "@/lib/nws";
 import { fetchAssetElevations } from "@/lib/usgs";
+import { fetchWaterIntelligence } from "@/lib/water";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    const [weather, elevations] = await Promise.all([
+    const [weather, elevations, water] = await Promise.all([
       fetchHoustonWeather(),
       fetchAssetElevations(),
+      fetchWaterIntelligence(),
     ]);
-    return Response.json(createIncidentIntelligence(weather, elevations), {
+    return Response.json(createIncidentIntelligence(weather, elevations, water), {
       headers: { "Cache-Control": "no-store" },
     });
   } catch (error) {

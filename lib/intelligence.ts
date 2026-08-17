@@ -1,3 +1,5 @@
+import { demoWaterIntelligence, type FloodCategory, type WaterIntelligence } from "@/lib/water";
+
 export type RiskLevel = "LOW" | "MODERATE" | "HIGH" | "SEVERE";
 export type AgentId = "weather" | "infrastructure" | "operations" | "communications";
 
@@ -103,6 +105,7 @@ export interface IncidentIntelligence {
     updatedAt: string;
   };
   weather: WeatherState;
+  water: WaterIntelligence;
   assessments: Record<AgentId, AgentAssessment>;
   assets: InfrastructureAsset[];
   timeline: TimelineEvent[];
@@ -193,6 +196,58 @@ function evidenceFor(weather: WeatherState): EvidenceReference[] {
   );
 }
 
+function waterEvidenceFor(water: WaterIntelligence): EvidenceReference[] {
+  const rank: Record<FloodCategory, number> = { UNKNOWN: 0, NORMAL: 1, ACTION: 2, MINOR: 3, MODERATE: 4, MAJOR: 5 };
+  const highestGauge = [...water.riverGauges].sort((a, b) => rank[b.category] - rank[a.category])[0];
+  const coast = [...water.coastalStations].sort((a, b) => Math.abs(b.anomalyM ?? 0) - Math.abs(a.anomalyM ?? 0))[0];
+  const evidence: EvidenceReference[] = [];
+  if (highestGauge) evidence.push({
+    id: "WATER-GAUGE-001",
+    label: `${highestGauge.name} river stage`,
+    value: `${highestGauge.observedValue ?? "—"} ${highestGauge.observedUnit} · ${highestGauge.category.toLowerCase()} · ${highestGauge.trend.toLowerCase()}`,
+    source: `${highestGauge.source}${highestGauge.usgsId ? ` · USGS ${highestGauge.usgsId}` : ""}`,
+    observedAt: highestGauge.observedAt,
+  });
+  if (coast) evidence.push({
+    id: "COOPS-COAST-001",
+    label: `${coast.name} coastal water level`,
+    value: `${coast.observedM ?? "—"} m MLLW · ${coast.anomalyM == null ? "—" : `${coast.anomalyM >= 0 ? "+" : ""}${coast.anomalyM} m`} versus tide prediction`,
+    source: coast.source,
+    observedAt: coast.observedAt,
+  });
+  evidence.push({
+    id: "FEMA-NFHL-001",
+    label: "Special Flood Hazard Area overlay",
+    value: water.floodZoneStatus === "LIVE"
+      ? `${water.floodZones.features.length} FEMA NFHL features loaded in the operating area`
+      : "FEMA NFHL overlay unavailable; river and coastal observations remain live",
+    source: "FEMA National Flood Hazard Layer",
+    observedAt: water.fetchedAt,
+  });
+  return evidence;
+}
+
+function waterRisk(water: WaterIntelligence): RiskLevel {
+  if (water.highestCategory === "MAJOR") return "SEVERE";
+  if (["MODERATE", "MINOR"].includes(water.highestCategory)) return "HIGH";
+  if (water.highestCategory === "ACTION" || water.coastalStations.some((station) => Math.abs(station.anomalyM ?? 0) >= 0.45)) return "MODERATE";
+  return "LOW";
+}
+
+function riskMax(...risks: RiskLevel[]): RiskLevel {
+  const order: RiskLevel[] = ["LOW", "MODERATE", "HIGH", "SEVERE"];
+  return [...risks].sort((a, b) => order.indexOf(b) - order.indexOf(a))[0] ?? "LOW";
+}
+
+function distanceKm(first: { latitude: number; longitude: number }, second: { latitude: number; longitude: number }) {
+  const toRadians = (value: number) => (value * Math.PI) / 180;
+  const latitudeDelta = toRadians(second.latitude - first.latitude);
+  const longitudeDelta = toRadians(second.longitude - first.longitude);
+  const a = Math.sin(latitudeDelta / 2) ** 2
+    + Math.cos(toRadians(first.latitude)) * Math.cos(toRadians(second.latitude)) * Math.sin(longitudeDelta / 2) ** 2;
+  return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 function pointInRing(longitude: number, latitude: number, ring: number[][]) {
   let inside = false;
   for (let index = 0, previous = ring.length - 1; index < ring.length; previous = index++) {
@@ -213,6 +268,7 @@ function pointInAlert(longitude: number, latitude: number, geometry: AlertGeomet
 
 function assessAssets(
   weather: WeatherState,
+  water: WaterIntelligence,
   risk: RiskLevel,
   hazard: string,
   elevations: Record<string, number | null>,
@@ -225,8 +281,14 @@ function assessAssets(
     const floodRelevant = hazardText.includes("flood") && asset.id !== "ASSET-HOSP-01";
     const windRelevant = /wind|hurricane|tornado/.test(hazardText) && asset.id === "ASSET-ROUTE-45";
     const lowElevationFloodExposure = elevationM != null && elevationM <= 4 && /flood|storm surge|hurricane/.test(hazardText);
-    const relevant = Boolean(intersectingAlert) || lowElevationFloodExposure || heatRelevant || floodRelevant || windRelevant;
-    const exposure = (intersectingAlert || lowElevationFloodExposure) && ["HIGH", "SEVERE"].includes(risk)
+    const nearestGauge = [...water.riverGauges].sort((a, b) => distanceKm(asset, a) - distanceKm(asset, b))[0];
+    const gaugeDistance = nearestGauge ? distanceKm(asset, nearestGauge) : null;
+    const nearestCoast = [...water.coastalStations].sort((a, b) => distanceKm(asset, a) - distanceKm(asset, b))[0];
+    const coastDistance = nearestCoast ? distanceKm(asset, nearestCoast) : null;
+    const gaugeElevated = Boolean(nearestGauge && gaugeDistance != null && gaugeDistance <= 45 && ["ACTION", "MINOR", "MODERATE", "MAJOR"].includes(nearestGauge.category));
+    const coastalElevated = Boolean(nearestCoast && coastDistance != null && coastDistance <= 35 && Math.abs(nearestCoast.anomalyM ?? 0) >= 0.45);
+    const relevant = Boolean(intersectingAlert) || lowElevationFloodExposure || heatRelevant || floodRelevant || windRelevant || gaugeElevated || coastalElevated;
+    const exposure = (intersectingAlert || lowElevationFloodExposure || gaugeElevated || coastalElevated) && ["HIGH", "SEVERE"].includes(risk)
       ? "ELEVATED"
       : relevant || risk === "MODERATE"
         ? "MONITOR"
@@ -238,11 +300,17 @@ function assessAssets(
       exposure,
       reason: intersectingAlert
         ? `Located inside the live NWS ${intersectingAlert.event} polygon.`
+        : gaugeElevated && nearestGauge
+          ? `${nearestGauge.name} is ${Math.round(gaugeDistance!)} km away at ${nearestGauge.category.toLowerCase()} stage.`
+          : coastalElevated && nearestCoast
+            ? `${nearestCoast.name} is ${Math.round(coastDistance!)} km away with a ${nearestCoast.anomalyM! >= 0 ? "+" : ""}${nearestCoast.anomalyM} m tide anomaly.`
         : lowElevationFloodExposure
           ? `${Math.round(elevationM)} m USGS elevation increases sensitivity to ${hazard.toLowerCase()}.`
           : relevant
             ? `${hazard} intersects this asset's declared vulnerability.`
-            : `${asset.type} remains in the shared operating picture; no spatial or vulnerability threshold is crossed.`,
+            : nearestGauge
+              ? `${asset.type} remains below exposure thresholds; nearest live gauge ${nearestGauge.name} is ${nearestGauge.category.toLowerCase()}.`
+              : `${asset.type} remains in the shared operating picture; no spatial or vulnerability threshold is crossed.`,
     };
   });
 }
@@ -250,10 +318,14 @@ function assessAssets(
 export function createIncidentIntelligence(
   weather: WeatherState,
   elevations: Record<string, number | null> = {},
+  water: WaterIntelligence = demoWaterIntelligence,
 ): IncidentIntelligence {
-  const { risk, hazard } = weatherRisk(weather);
+  const { risk: weatherRiskLevel, hazard } = weatherRisk(weather);
+  const waterRiskLevel = waterRisk(water);
+  const risk = riskMax(weatherRiskLevel, waterRiskLevel);
   const evidence = evidenceFor(weather);
-  const assessedAssets = assessAssets(weather, risk, hazard, elevations);
+  const waterEvidence = waterEvidenceFor(water);
+  const assessedAssets = assessAssets(weather, water, risk, hazard, elevations);
   const exposedAssets = assessedAssets.filter((asset) => asset.exposure !== "NORMAL");
   const infrastructureRisk: RiskLevel = exposedAssets.some((asset) => asset.exposure === "ELEVATED")
     ? "HIGH"
@@ -262,7 +334,7 @@ export function createIncidentIntelligence(
       : "LOW";
   const interventionRequired = ["HIGH", "SEVERE"].includes(risk) || infrastructureRisk === "HIGH";
   const internalBriefing = risk !== "LOW" || exposedAssets.length > 0;
-  const timestamp = new Date(weather.fetchedAt).getTime();
+  const timestamp = Math.max(new Date(weather.fetchedAt).getTime(), new Date(water.fetchedAt).getTime());
   const timeAt = (offset: number) => new Date(timestamp + offset).toISOString();
   const weatherConfidence = clamp((weather.isLive ? 94 : 82) - (weather.observedAt ? 0 : 10), 65, 97);
   const spatialAlertCount = weather.activeAlerts.filter((alert) => alert.geometry).length;
@@ -274,11 +346,11 @@ export function createIncidentIntelligence(
       agent: "weather",
       label: "Weather",
       remit: "Current conditions, forecast and active alerts",
-      state: risk,
-      risk,
+      state: weatherRiskLevel,
+      risk: weatherRiskLevel,
       confidence: weatherConfidence,
       headline: hazard,
-      summary: risk === "LOW"
+      summary: weatherRiskLevel === "LOW"
         ? "No material weather threshold is currently crossed. Continue routine monitoring of the latest NWS forecast."
         : `${hazard} is the primary operational concern in the current NWS evidence.`,
       findings: [
@@ -292,18 +364,19 @@ export function createIncidentIntelligence(
     infrastructure: {
       agent: "infrastructure",
       label: "Infrastructure",
-      remit: "Critical assets and weather-linked exposure",
+      remit: "Critical assets, river, coastal and weather exposure",
       state: exposedAssets.length === 0 ? "CLEAR" : `${exposedAssets.length} TO WATCH`,
       risk: infrastructureRisk,
       confidence: infrastructureConfidence,
-      headline: exposedAssets.length === 0 ? "No asset threshold crossed" : `${exposedAssets.length} assets warrant monitoring`,
+      headline: exposedAssets.length === 0 ? "Water and asset thresholds clear" : `${exposedAssets.length} assets warrant monitoring`,
       summary: exposedAssets.length === 0
-        ? "The current weather evidence does not intersect a declared vulnerability in the representative asset set."
+        ? `${water.riverGauges.length} river gauges and ${water.coastalStations.length} coastal stations do not currently intersect a declared asset threshold.`
         : `${exposedAssets.map((asset) => asset.name).join(" and ")} remain exposed to the current hazard profile.`,
       findings: assessedAssets.map((asset) => `${asset.name}: ${asset.exposure.toLowerCase()} — ${asset.reason}`),
       evidence: [
-        ...evidence.slice(0, 2),
-        { id: "ASSET-REGISTER-001", label: "Geocoded representative critical-asset register", value: `${assessedAssets.length} assets evaluated · ${spatialAlertCount} live warning polygons · ${elevationCount} USGS elevation samples`, source: "Osprey demonstration fixture + NWS GeoJSON + USGS 3DEP", observedAt: weather.fetchedAt },
+        ...waterEvidence,
+        ...evidence.slice(0, 1),
+        { id: "ASSET-REGISTER-001", label: "Geocoded representative critical-asset register", value: `${assessedAssets.length} assets evaluated · ${spatialAlertCount} warning polygons · ${water.riverGauges.length + water.coastalStations.length} live water stations · ${elevationCount} USGS elevation samples`, source: "Osprey demonstration fixture + NWS/NOAA/USGS/FEMA", observedAt: water.fetchedAt },
       ],
       watchFor: ["Pump capacity during heavy rainfall", "Hospital cooling continuity during dangerous heat", "I-45 access constraints"],
       affectedAssets: assessedAssets,
@@ -323,7 +396,8 @@ export function createIncidentIntelligence(
         ? ["Confirm accountable owners for elevated assets.", "Check access and continuity arrangements.", "Reassess after the next NWS update."]
         : ["Maintain the current operating posture.", "Keep the three representative critical assets in view.", "Reassess in 60 minutes or on a new alert."],
       evidence: [
-        ...evidence.slice(0, 2),
+        ...evidence.slice(0, 1),
+        ...waterEvidence.slice(0, 2),
         { id: "INFRA-ASSESS-001", label: "Infrastructure assessment", value: `${exposedAssets.length} assets require monitoring`, source: "Osprey Infrastructure Agent", observedAt: timeAt(1000) },
       ],
       watchFor: ["A new severe alert", "An asset moving to elevated exposure", "Material forecast deterioration"],
@@ -347,11 +421,12 @@ export function createIncidentIntelligence(
       findings: [
         interventionRequired ? "Internal asset-owner briefing: prepare for review." : "Public communication: not recommended.",
         "External release: held behind named human approval.",
-        `Next review trigger: ${risk === "LOW" ? "new alert or 60 minutes" : "material NWS update"}.`,
+        `Next review trigger: ${risk === "LOW" ? "new alert, water threshold or 60 minutes" : "material weather or water update"}.`,
       ],
       evidence: [
         { id: "OPS-RECOMMEND-001", label: "Operations recommendation", value: interventionRequired ? "Prepare reversible response" : "Continue monitoring", source: "Osprey Operations Agent", observedAt: timeAt(2000) },
         ...evidence.slice(0, 1),
+        ...waterEvidence.slice(0, 1),
       ],
       watchFor: ["Approval of a consequential action", "Public warning issued by an authority", "Change in affected audience"],
       requiresApproval: interventionRequired,
@@ -367,15 +442,17 @@ export function createIncidentIntelligence(
       classification: "LIVE DATA · DEMONSTRATION DECISIONS",
       severity: risk,
       version: Math.max(1, Math.floor(timestamp / 60000)),
-      updatedAt: weather.fetchedAt,
+      updatedAt: new Date(timestamp).toISOString(),
     },
     weather,
+    water,
     assessments,
     assets: assessedAssets,
     timeline: [
       { id: "TL-001", occurredAt: timeAt(0), actor: "NWS adapter", title: "Live weather intelligence refreshed", detail: `${evidence.length} normalized evidence records added to shared incident state.`, evidenceIds: evidence.map((item) => item.id) },
-      { id: "TL-002", occurredAt: timeAt(1000), actor: "Weather Agent", title: "Weather assessment completed", detail: `${risk} risk · ${weatherConfidence}% confidence · ${hazard}.`, evidenceIds: evidence.map((item) => item.id) },
-      { id: "TL-003", occurredAt: timeAt(2000), actor: "Infrastructure Agent", title: "Spatial exposure assessed", detail: `${exposedAssets.length} of ${assessedAssets.length} geocoded assets require monitoring across ${spatialAlertCount} live NWS warning polygons.`, evidenceIds: ["ASSET-REGISTER-001", ...evidence.slice(0, 2).map((item) => item.id)] },
+      { id: "TL-001-WATER", occurredAt: timeAt(500), actor: "Water adapters", title: "River, coastal and flood-zone intelligence refreshed", detail: `${water.riverGauges.length} NOAA/USGS gauges · ${water.coastalStations.length} NOAA coastal stations · FEMA overlay ${water.floodZoneStatus.toLowerCase()}.`, evidenceIds: waterEvidence.map((item) => item.id) },
+      { id: "TL-002", occurredAt: timeAt(1000), actor: "Weather Agent", title: "Weather assessment completed", detail: `${weatherRiskLevel} risk · ${weatherConfidence}% confidence · ${hazard}.`, evidenceIds: evidence.map((item) => item.id) },
+      { id: "TL-003", occurredAt: timeAt(2000), actor: "Infrastructure Agent", title: "Spatial exposure assessed", detail: `${exposedAssets.length} of ${assessedAssets.length} geocoded assets require monitoring across weather, river and coastal evidence.`, evidenceIds: ["ASSET-REGISTER-001", ...waterEvidence.slice(0, 2).map((item) => item.id)] },
       { id: "TL-004", occurredAt: timeAt(3000), actor: "Operations Agent", title: interventionRequired ? "Reversible preparation proposed" : "Monitoring posture recommended", detail: assessments.operations.summary, evidenceIds: ["INFRA-ASSESS-001"] },
       { id: "TL-005", occurredAt: timeAt(4000), actor: "Communications Agent", title: assessments.communications.headline, detail: "No message or external effect has been released.", evidenceIds: ["OPS-RECOMMEND-001"] },
     ],
