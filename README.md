@@ -13,22 +13,16 @@ replacement GIS or another collection of disaster dashboards. See
 
 ## Current milestone
 
-The repository currently contains the first command-room vertical slice:
+The repository contains Osprey's first working incident-room spine:
 
-- incident overview and severity
-- operational risk map
-- hazard-specific operational lenses
-- map-based exposure queries and time-based forecasting
-- connector health and source freshness
-- specialist-agent collaboration and challenge
-- provenance-rich evidence graph and timeline
-- governed decision packets and human approval gates
-- decision-to-task-to-communication-to-outcome lineage
-- response-time, decision-quality, and workload measures
+- live Houston–Galveston observations, forecast and alerts from the US National Weather Service
+- a normalized internal weather contract that isolates the interface from the NWS schema
+- Weather, Infrastructure, Operations and Communications assessments over one shared incident state
+- evidence references, confidence, representative critical assets and an incident timeline
+- a manual live-intelligence refresh and visible source/demo boundaries
 
-The current incident is representative demonstration data. Durable incident
-state, Temporal orchestration, live data sources, and Python weather analysis
-will be introduced in later milestones.
+The weather feed is live. The infrastructure register and all proposed decisions
+remain representative demonstration data; Osprey releases no external effects.
 
 ## Documentation
 

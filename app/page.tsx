@@ -1,350 +1,288 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
-  demoActionChain,
-  demoAgents,
-  demoConnectors,
-  demoCoursesOfAction,
-  demoEvidence,
-  demoHazardViews,
-  demoIncident,
-  demoOperationalMeasures,
-} from "@/lib/incident";
+  demoIntelligence,
+  type AgentAssessment,
+  type AgentId,
+  type IncidentIntelligence,
+  type RiskLevel,
+} from "@/lib/intelligence";
 
-const exposureQueries = {
-  Radius: "6 priority zones · 14,280 people",
-  Polygon: "3 care facilities · 2 access routes",
-  Assets: "11 critical assets · 4 owners",
-} as const;
+const agentOrder: AgentId[] = ["weather", "infrastructure", "operations", "communications"];
 
-type ExposureQuery = keyof typeof exposureQueries;
+const agentNumbers: Record<AgentId, string> = {
+  weather: "01",
+  infrastructure: "02",
+  operations: "03",
+  communications: "04",
+};
+
+function formatTime(value: string, includeDate = false) {
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: "America/Chicago",
+    ...(includeDate ? { day: "2-digit", month: "short" } : {}),
+    hour: "2-digit",
+    minute: "2-digit",
+    second: includeDate ? undefined : "2-digit",
+    hour12: false,
+  }).format(new Date(value));
+}
+
+function riskClass(risk: RiskLevel) {
+  return `risk-${risk.toLowerCase()}`;
+}
+
+function AssessmentCard({ assessment, active, onOpen }: { assessment: AgentAssessment; active: boolean; onOpen: () => void }) {
+  return (
+    <article className={`assessment-card ${active ? "assessment-active" : ""}`}>
+      <button className="assessment-main" onClick={onOpen} aria-expanded={active}>
+        <span className="agent-index">{agentNumbers[assessment.agent]}</span>
+        <span className="agent-copy">
+          <span className="agent-name">{assessment.label} Agent</span>
+          <span className="agent-remit">{assessment.remit}</span>
+        </span>
+        <span className={`risk-badge ${riskClass(assessment.risk)}`}>{assessment.state}</span>
+        <strong>{assessment.headline}</strong>
+        <p>{assessment.summary}</p>
+        <span className="confidence-row">
+          <span><b>{assessment.confidence}%</b> confidence</span>
+          <span>{assessment.evidence.length} evidence records</span>
+          <span className="open-detail">{active ? "Close detail" : "View evidence"} →</span>
+        </span>
+      </button>
+    </article>
+  );
+}
 
 export default function Home() {
-  const [mapLayer, setMapLayer] = useState<"Risk" | "Impact" | "Assets">("Risk");
-  const [activeHazardId, setActiveHazardId] = useState("flood");
-  const [exposureQuery, setExposureQuery] = useState<ExposureQuery>("Polygon");
-  const [forecastHour, setForecastHour] = useState(14);
-  const [optionsOpen, setOptionsOpen] = useState(false);
-  const [selectedOption, setSelectedOption] = useState("COA-02");
-  const [packetStatus, setPacketStatus] = useState<"draft" | "queued">("draft");
+  const [intelligence, setIntelligence] = useState<IncidentIntelligence>(demoIntelligence);
+  const [refreshState, setRefreshState] = useState<"idle" | "loading" | "error">("idle");
+  const [errorMessage, setErrorMessage] = useState("");
+  const [openAgent, setOpenAgent] = useState<AgentId>("weather");
 
-  const activeHazard = useMemo(
-    () => demoHazardViews.find((hazard) => hazard.id === activeHazardId) ?? demoHazardViews[0],
-    [activeHazardId],
-  );
+  const refreshIntelligence = useCallback(async () => {
+    setRefreshState("loading");
+    setErrorMessage("");
+    try {
+      const response = await fetch("/api/intelligence", { cache: "no-store" });
+      const payload = await response.json() as IncidentIntelligence | { error?: string };
+      if (!response.ok || !("incident" in payload)) {
+        throw new Error("error" in payload ? payload.error : "The live weather source did not respond.");
+      }
+      setIntelligence(payload);
+      setRefreshState("idle");
+    } catch (error) {
+      setRefreshState("error");
+      setErrorMessage(error instanceof Error ? error.message : "The live weather source did not respond.");
+    }
+  }, []);
 
-  const selectedCourse = useMemo(
-    () => demoCoursesOfAction.find((option) => option.id === selectedOption) ?? demoCoursesOfAction[1],
-    [selectedOption],
-  );
+  useEffect(() => {
+    const initialRefresh = window.setTimeout(() => {
+      void refreshIntelligence();
+    }, 0);
+    return () => window.clearTimeout(initialRefresh);
+  }, [refreshIntelligence]);
 
-  const queueDecisionPacket = () => {
-    setPacketStatus("queued");
-    setOptionsOpen(false);
-  };
+  const { incident, weather, assessments, assets, timeline } = intelligence;
+  const activeAssessment = assessments[openAgent];
+  const elevatedAssets = assets.filter((asset) => asset.exposure !== "NORMAL").length;
 
   return (
-    <main className="command-shell">
-      <aside className="sidebar">
-        <div className="brand-mark" aria-label="Osprey home">
-          <span className="brand-glyph">O</span>
+    <main className="room-shell">
+      <aside className="room-sidebar">
+        <a className="brand" href="#top" aria-label="Osprey incident room">
+          <span className="brand-symbol">O</span>
           <span>OSPREY</span>
-        </div>
+        </a>
 
-        <nav className="primary-nav" aria-label="Primary navigation">
-          <a className="nav-item nav-active" href="#command"><span>01</span>Command</a>
-          <a className="nav-item" href="#intelligence"><span>02</span>Intelligence</a>
-          <a className="nav-item" href="#actions"><span>03</span>Actions</a>
-          <a className="nav-item" href="#audit"><span>04</span>Audit</a>
+        <nav className="room-nav" aria-label="Incident room sections">
+          <a href="#overview" className="nav-current"><span>01</span>Overview</a>
+          <a href="#agents"><span>02</span>Agents</a>
+          <a href="#assets"><span>03</span>Assets</a>
+          <a href="#timeline"><span>04</span>Timeline</a>
         </nav>
 
-        <div className="sidebar-footer">
-          <div className="connection"><i />Source mesh operational</div>
-          <div className="user-block">
-            <span className="avatar">KH</span>
-            <span><strong>Kye Hussain</strong><small>Incident commander</small></span>
+        <div className="sidebar-status">
+          <span className={`source-dot ${weather.isLive ? "source-live" : "source-waiting"}`} />
+          <div>
+            <strong>{weather.isLive ? "NWS connected" : "Connecting to NWS"}</strong>
+            <small>{weather.sourceOffice} · normalized source</small>
           </div>
+        </div>
+        <div className="operator">
+          <span>KH</span>
+          <div><strong>Kye Hussain</strong><small>Human controller</small></div>
         </div>
       </aside>
 
-      <section className="workspace" id="command">
-        <header className="topbar">
-          <div className="incident-id"><span>{demoIncident.id}</span><i />ACTIVE INCIDENT</div>
-          <div className="topbar-meta"><span>Last sync 10:44:18</span><button aria-label="Open notifications">3</button></div>
+      <section className="room-workspace" id="top">
+        <header className="room-topbar">
+          <div className="incident-code"><span>{incident.id}</span><i />{incident.status} INCIDENT</div>
+          <div className="classification">{incident.classification}</div>
         </header>
 
-        <section className="hazard-strip" aria-label="Hazard-specific operational views">
-          <span className="strip-label">OPERATIONAL VIEW</span>
-          <div className="hazard-tabs">
-            {demoHazardViews.map((hazard) => (
-              <button
-                className={`hazard-tab hazard-${hazard.tone} ${activeHazard.id === hazard.id ? "hazard-selected" : ""}`}
-                key={hazard.id}
-                onClick={() => setActiveHazardId(hazard.id)}
-                aria-pressed={activeHazard.id === hazard.id}
-              >
-                <span>{hazard.label}</span>
-                <small>{hazard.status}</small>
-              </button>
+        {refreshState === "error" && (
+          <div className="source-warning" role="status">
+            <strong>Live NWS refresh paused.</strong>
+            <span>{errorMessage} The last available representative snapshot remains visible.</span>
+            <button onClick={() => void refreshIntelligence()}>Try again</button>
+          </div>
+        )}
+
+        <section className="incident-hero" id="overview">
+          <div className="hero-main">
+            <div className="eyebrow-row"><span>TEXAS GULF COAST</span><i />SHARED INCIDENT STATE v{incident.version}</div>
+            <h1>Houston–Galveston<br />Incident Room</h1>
+            <p>Live weather evidence enters one shared state, where four specialist agents assess conditions, infrastructure exposure, operations and communications.</p>
+          </div>
+          <div className="hero-state">
+            <span>CURRENT OPERATIONAL STATE</span>
+            <strong className={riskClass(incident.severity)}>{incident.severity}</strong>
+            <p>{assessments.weather.headline}</p>
+            <time>Updated {formatTime(incident.updatedAt, true)} CT</time>
+            <button className="refresh-button" onClick={() => void refreshIntelligence()} disabled={refreshState === "loading"}>
+              <span className={refreshState === "loading" ? "refresh-spinning" : ""}>↻</span>
+              {refreshState === "loading" ? "Refreshing intelligence…" : "Refresh live intelligence"}
+            </button>
+          </div>
+        </section>
+
+        <section className="weather-ribbon" aria-label="Live Houston weather">
+          <div className="weather-lead">
+            <span className={`source-pill ${weather.isLive ? "pill-live" : "pill-preview"}`}><i />{weather.isLive ? "LIVE NWS" : "CONNECTING"}</span>
+            <strong>Houston conditions</strong>
+            <small>Observed {formatTime(weather.observedAt)} CT · {weather.sourceOffice}</small>
+          </div>
+          <div className="temperature"><strong>{weather.temperatureC ?? "—"}°</strong><span>C</span></div>
+          <div className="condition"><span>CONDITION</span><strong>{weather.condition}</strong><small>{weather.forecast.summary}</small></div>
+          <div className="weather-stat"><span>WIND</span><strong>{weather.windDirection ?? "—"} {weather.windSpeedMph ?? "—"} mph</strong></div>
+          <div className="weather-stat"><span>HUMIDITY</span><strong>{weather.humidityPercent ?? "—"}%</strong></div>
+          <div className="weather-stat alert-stat"><span>ACTIVE ALERTS</span><strong>{weather.activeAlerts.length}</strong></div>
+        </section>
+
+        <section className="shared-state" aria-label="Shared incident state flow">
+          <span className="shared-label">ONE SHARED INCIDENT STATE</span>
+          <div><span>NWS evidence</span><i>→</i><span>Weather</span><i>→</i><span>Infrastructure</span><i>→</i><span>Operations</span><i>→</i><span>Communications</span></div>
+          <small>Each specialist reads the accepted findings before it and publishes evidence-bound output back to the same incident.</small>
+        </section>
+
+        <section className="agent-section" id="agents">
+          <div className="section-heading">
+            <div><span className="section-kicker">SPECIALIST INTELLIGENCE</span><h2>Four perspectives. One operating picture.</h2></div>
+            <span className="complete-status"><i />All assessments complete</span>
+          </div>
+          <div className="assessment-grid">
+            {agentOrder.map((agent) => (
+              <AssessmentCard
+                key={agent}
+                assessment={assessments[agent]}
+                active={openAgent === agent}
+                onOpen={() => setOpenAgent(agent)}
+              />
             ))}
           </div>
-          <div className="compound-status"><i />Compound incident · 3 active hazards</div>
-        </section>
 
-        <div className="incident-heading">
-          <div>
-            <p className="eyebrow">{activeHazard.label.toUpperCase()} OPERATIONS · {demoIncident.region.toUpperCase()}</p>
-            <h1>{demoIncident.name}</h1>
-            <p className="heading-copy">Evidence-led incident command: specialist agents turn live operational data into challenged decisions, approved actions and measurable outcomes.</p>
-          </div>
-          <div className="severity-card">
-            <span>{activeHazard.label.toUpperCase()} POSTURE</span>
-            <strong>{activeHazard.status}</strong>
-            <small>{activeHazard.focus}</small>
-          </div>
-        </div>
-
-        <section className="metric-row" aria-label="Current incident summary">
-          <article><span>OPERATIONAL FOCUS</span><strong>{activeHazard.focus}</strong><small>{activeHazard.label} specialist view</small></article>
-          <article><span>EXPOSURE QUERY</span><strong>{activeHazard.exposed}</strong><small>{exposureQuery} selection active</small></article>
-          <article><span>FORECAST WINDOW</span><strong>{forecastHour}:00</strong><small>Ensemble confidence 87%</small></article>
-          <article><span>DECISION READINESS</span><strong>12 / 14</strong><small>Verified findings in packet</small></article>
-        </section>
-
-        <section className="connector-strip" aria-label="Connected operational data sources">
-          <div className="connector-intro"><span>LIVE SOURCE MESH</span><strong>5 operational connectors</strong></div>
-          {demoConnectors.map((connector) => (
-            <article className="connector" key={connector.name}>
-              <i className={`connector-${connector.state}`} />
-              <div><strong>{connector.name}</strong><small>{connector.detail}</small></div>
-              <time>{connector.freshness}</time>
-            </article>
-          ))}
-        </section>
-
-        <div className="command-grid">
-          <section className="map-card" aria-label="Operational map of incident area">
-            <div className="panel-header">
-              <div><span className="panel-kicker">{activeHazard.label.toUpperCase()} OPERATIONAL MAP</span><strong>Exposure and forecast workspace</strong></div>
-              <div className="map-controls">
-                {(["Risk", "Impact", "Assets"] as const).map((layer) => (
-                  <button
-                    className={mapLayer === layer ? "selected" : ""}
-                    key={layer}
-                    onClick={() => setMapLayer(layer)}
-                    aria-pressed={mapLayer === layer}
-                  >
-                    {layer}
-                  </button>
+          <div className="assessment-detail" aria-live="polite">
+            <div className="detail-title">
+              <span className="agent-index">{agentNumbers[activeAssessment.agent]}</span>
+              <div><span>{activeAssessment.label.toUpperCase()} AGENT DETAIL</span><h3>{activeAssessment.headline}</h3></div>
+              {activeAssessment.requiresApproval && <span className="approval-chip">HUMAN APPROVAL REQUIRED</span>}
+            </div>
+            <div className="detail-columns">
+              <div className="finding-list">
+                <span className="detail-label">FINDINGS</span>
+                {activeAssessment.findings.map((finding, index) => (
+                  <div key={finding}><b>{String(index + 1).padStart(2, "0")}</b><p>{finding}</p></div>
                 ))}
               </div>
-            </div>
-            <div className={`map-surface map-hour-${forecastHour}`}>
-              <div className="map-grid-lines" />
-              <div className="terrain terrain-one" />
-              <div className="terrain terrain-two" />
-              <div className="water-line water-one" />
-              <div className="water-line water-two" />
-              <div className="risk-area risk-high"><span>EDEN</span></div>
-              <div className="risk-area risk-medium"><span>LOWTHER</span></div>
-              <div className="query-shape"><span>SELECTED AREA</span></div>
-              <div className="place place-penrith"><i /><strong>Penrith</strong><small>High exposure</small></div>
-              <div className="place place-carlisle"><i /><strong>Carlisle</strong><small>Monitoring</small></div>
-              <div className="place place-appleby"><i /><strong>Appleby</strong><small>Rising rapidly</small></div>
-              <div className="map-time"><span>{mapLayer.toUpperCase()} · FORECAST VALID</span><strong>16 AUG · {forecastHour}:00</strong></div>
-              <div className="query-toolbar" aria-label="Map exposure query">
-                <span>EXPOSURE QUERY</span>
-                <div>
-                  {(Object.keys(exposureQueries) as ExposureQuery[]).map((query) => (
-                    <button
-                      key={query}
-                      className={exposureQuery === query ? "query-selected" : ""}
-                      onClick={() => setExposureQuery(query)}
-                      aria-pressed={exposureQuery === query}
-                    >{query}</button>
-                  ))}
+              <div className="evidence-list">
+                <span className="detail-label">EVIDENCE USED</span>
+                {activeAssessment.evidence.map((evidence) => (
+                  <article key={evidence.id}>
+                    <span><i />{evidence.id}</span>
+                    <strong>{evidence.label}</strong>
+                    <p>{evidence.value}</p>
+                    <small>{evidence.source} · {formatTime(evidence.observedAt)} CT</small>
+                  </article>
+                ))}
+              </div>
+              <div className="watch-list">
+                <span className="detail-label">WATCH FOR</span>
+                {activeAssessment.watchFor.map((item) => <p key={item}>{item}</p>)}
+                <div className="confidence-meter">
+                  <span><b>Confidence</b><strong>{activeAssessment.confidence}%</strong></span>
+                  <i><b style={{ width: `${activeAssessment.confidence}%` }} /></i>
+                  <small>Derived from source freshness, coverage and cross-agent evidence.</small>
                 </div>
               </div>
-              <div className="exposure-result">
-                <span>SELECTION RESULT</span>
-                <strong>{exposureQueries[exposureQuery]}</strong>
-                <small>Joined across GIS, asset and community records</small>
-              </div>
-              <div className="map-legend"><span><i className="legend-high" />High</span><span><i className="legend-medium" />Elevated</span><span><i className="legend-river" />River</span></div>
             </div>
-            <div className="forecast-control">
-              <div><span className="panel-kicker">TIME-BASED FORECAST</span><strong>Model ensemble · {forecastHour}:00</strong></div>
-              <div className="forecast-track">
-                <input
-                  aria-label="Forecast hour"
-                  type="range"
-                  min="12"
-                  max="18"
-                  step="1"
-                  value={forecastHour}
-                  onChange={(event) => setForecastHour(Number(event.target.value))}
-                />
-                <div><span>12:00</span><span>15:00</span><span>18:00</span></div>
-              </div>
-              <div className="forecast-confidence"><span>87%</span><small>ensemble agreement</small></div>
-            </div>
-          </section>
+          </div>
+        </section>
 
-          <aside className="agent-panel" id="intelligence">
-            <div className="panel-header">
-              <div><span className="panel-kicker">COLLABORATIVE AGENT TEAM</span><strong>4 specialists · 1 challenge gate</strong></div>
-              <span className="live-pulse"><i />LIVE</span>
+        <div className="operations-grid">
+          <section className="asset-panel" id="assets">
+            <div className="panel-heading">
+              <div><span className="section-kicker">REPRESENTATIVE INFRASTRUCTURE</span><h2>Critical assets</h2></div>
+              <span>{elevatedAssets} require monitoring</span>
             </div>
-            <div className="agent-list">
-              {demoAgents.map((agent, index) => (
-                <article className="agent-row" key={agent.name}>
-                  <span className={`agent-number ${agent.state === "working" ? "active" : agent.state}`}>0{index + 1}</span>
-                  <div><strong>{agent.name}</strong><small>{agent.remit}</small></div>
-                  <span className={`agent-status ${agent.state === "working" ? "active" : agent.state}`}>{agent.status}</span>
+            <div className="asset-list">
+              {assets.map((asset) => (
+                <article key={asset.id}>
+                  <span className={`asset-state asset-${asset.exposure.toLowerCase()}`}>{asset.exposure}</span>
+                  <div><strong>{asset.name}</strong><small>{asset.type} · {asset.location}</small><p>{asset.reason}</p></div>
+                  <span className="criticality">{asset.criticality}</span>
                 </article>
               ))}
             </div>
-            <div className="collaboration-note">
-              <span>ACTIVE CHALLENGE</span>
-              <strong>Forecast timing vs. road-access assumption</strong>
-              <p>The challenge agent has asked Meteorology and Infrastructure to reconcile a 22-minute discrepancy.</p>
-              <small>CH-014 · opened 10:41 · blocks approval</small>
+            <p className="fixture-note">Infrastructure is a clearly marked demonstration fixture in this build; weather observations and alerts refresh from NWS.</p>
+          </section>
+
+          <section className="alert-panel">
+            <div className="panel-heading">
+              <div><span className="section-kicker">AUTHORITATIVE ALERTS</span><h2>NWS alert feed</h2></div>
+              <span>{weather.activeAlerts.length} active</span>
             </div>
-            <div className="decision-card">
-              <span className="decision-label">{packetStatus === "queued" ? "PACKET QUEUED" : "HUMAN DECISION REQUIRED"}</span>
-              <h2>{packetStatus === "queued" ? selectedCourse.title : "Protect three exposed care facilities"}</h2>
-              <p>{packetStatus === "queued" ? "The selected course is held for commander approval. No task or communication has been released." : "A decision packet is ready with evidence, challenge findings, options and reversible first actions."}</p>
-              <button onClick={() => setOptionsOpen(true)}>{packetStatus === "queued" ? "Reopen packet" : "Review decision packet"} <span>→</span></button>
-            </div>
-          </aside>
-        </div>
-
-        <section className="evidence-panel" aria-label="Incident evidence graph">
-          <div className="panel-header">
-            <div><span className="panel-kicker">INCIDENT EVIDENCE GRAPH</span><strong>From source to governed decision</strong></div>
-            <div className="graph-status"><i />38 evidence records · 3 challenged · 12 in packet</div>
-          </div>
-          <div className="evidence-flow">
-            <article className="flow-node flow-sources">
-              <span className="flow-step">01 · SOURCES</span>
-              {demoEvidence.map((evidence) => (
-                <div className="source-record" key={evidence.id}>
-                  <i className={`confidence-${evidence.confidence}`} />
-                  <span><strong>{evidence.source}</strong><small>{evidence.receivedAt} · {evidence.provenance}</small></span>
-                </div>
-              ))}
-            </article>
-            <article className="flow-node">
-              <span className="flow-step">02 · CLAIM</span>
-              <strong>Peak arrives before all care-site access routes are verified</strong>
-              <p>Supported by forecast, road observation and asset exposure records.</p>
-              <small>CL-021 · confidence 87% · updated 10:43</small>
-            </article>
-            <article className="flow-node flow-challenge">
-              <span className="flow-step">03 · CHALLENGE</span>
-              <strong>One access-time assumption remains unresolved</strong>
-              <p>Approval is gated until the 22-minute discrepancy is accepted or corrected.</p>
-              <small>CH-014 · owner: Challenge agent</small>
-            </article>
-            <article className="flow-node flow-decision">
-              <span className="flow-step">04 · DECISION</span>
-              <strong>Prepare targeted support</strong>
-              <p>Reversible mobilisation proposed; public communication remains held.</p>
-              <small>COA-02 · commander approval required</small>
-            </article>
-          </div>
-        </section>
-
-        <section className="action-panel" id="actions">
-          <div className="panel-header">
-            <div><span className="panel-kicker">DECISION-TO-OUTCOME CHAIN</span><strong>One governed operational thread</strong></div>
-            <span className="action-gate">External effects held at approval gate</span>
-          </div>
-          <div className="action-chain">
-            {demoActionChain.map((item, index) => (
-              <article className="action-stage" key={item.id}>
-                <div className="stage-index">0{index + 1}</div>
-                <span>{item.stage}</span>
-                <strong>{item.title}</strong>
-                <p>{item.detail}</p>
-                <small className={`stage-${item.status}`}>{item.status}</small>
-              </article>
-            ))}
-          </div>
-          <div className="measure-row" aria-label="Operational performance measures">
-            <div className="measure-intro"><span>OPERATIONAL IMPACT</span><strong>Measure the command system, not screen activity</strong></div>
-            {demoOperationalMeasures.map((measure) => (
-              <article key={measure.label}>
-                <span>{measure.label}</span>
-                <div><strong>{measure.value}</strong><em>{measure.change}</em></div>
-                <small>{measure.detail}</small>
-              </article>
-            ))}
-          </div>
-        </section>
-
-        <section className="signal-panel" id="audit">
-          <div className="panel-header signal-title">
-            <div><span className="panel-kicker">PROVENANCE TIMELINE</span><strong>What changed and why it is trusted</strong></div>
-            <button>View complete audit trail</button>
-          </div>
-          <div className="signal-list">
-            {demoEvidence.map((evidence) => (
-              <article className="signal-row" key={evidence.id}>
-                <time>{evidence.observedAt}</time><i />
-                <div><strong>{evidence.title}</strong><p>{evidence.summary}</p><small>{evidence.provenance}</small></div>
-                <span className={`evidence-${evidence.challengeStatus}`}>{evidence.challengeStatus}</span>
-              </article>
-            ))}
-          </div>
-        </section>
-      </section>
-
-      {optionsOpen && (
-        <div className="decision-overlay" role="presentation">
-          <section className="decision-drawer" role="dialog" aria-modal="true" aria-labelledby="decision-title">
-            <header>
-              <div>
-                <span className="panel-kicker">GOVERNED DECISION PACKET · DP-007</span>
-                <h2 id="decision-title">Protect exposed care facilities</h2>
-                <p>Compare operational choices against the same evidence set. No task, message or external action is released without a human approval.</p>
+            {weather.activeAlerts.length > 0 ? (
+              <div className="alert-list">
+                {weather.activeAlerts.slice(0, 3).map((alert) => (
+                  <article key={alert.id}>
+                    <span>{alert.severity} · {alert.urgency}</span>
+                    <strong>{alert.event}</strong>
+                    <p>{alert.headline}</p>
+                    <small>Issued {formatTime(alert.sentAt)} CT{alert.expiresAt ? ` · expires ${formatTime(alert.expiresAt)} CT` : ""}</small>
+                  </article>
+                ))}
               </div>
-              <button className="close-button" onClick={() => setOptionsOpen(false)} aria-label="Close decision packet">×</button>
-            </header>
-            <div className="packet-summary">
-              <div><span>EVIDENCE</span><strong>12 verified</strong><small>latest 10:43</small></div>
-              <div><span>CHALLENGE</span><strong>1 unresolved</strong><small>approval warning</small></div>
-              <div><span>TIME WINDOW</span><strong>76 minutes</strong><small>before forecast peak</small></div>
-              <div><span>AUTHORITY</span><strong>Commander</strong><small>named approval required</small></div>
-            </div>
-            <div className="option-list">
-              {demoCoursesOfAction.map((option) => (
-                <button
-                  className={`option-card ${selectedOption === option.id ? "option-selected" : ""}`}
-                  key={option.id}
-                  onClick={() => setSelectedOption(option.id)}
-                  aria-pressed={selectedOption === option.id}
-                >
-                  <span className={`posture posture-${option.posture}`}>{option.posture}</span>
-                  <strong>{option.title}</strong>
-                  <p>{option.summary}</p>
-                  <dl>
-                    <div><dt>Benefit</dt><dd>{option.benefit}</dd></div>
-                    <div><dt>Trade-off</dt><dd>{option.tradeoff}</dd></div>
-                  </dl>
-                  <small>{option.evidenceCount} supporting evidence items · evidence state v18</small>
-                </button>
-              ))}
-            </div>
-            <footer>
-              <p><strong>Simulation boundary:</strong> queuing this packet records no real-world action.</p>
-              <button className="secondary-action" onClick={() => setOptionsOpen(false)}>Request more analysis</button>
-              <button className="primary-action" onClick={queueDecisionPacket}>Queue for commander approval</button>
-            </footer>
+            ) : (
+              <div className="no-alerts"><i>✓</i><strong>No active NWS alerts</strong><p>Osprey will reassess the incident automatically on the next live refresh.</p></div>
+            )}
           </section>
         </div>
-      )}
+
+        <section className="timeline-panel" id="timeline">
+          <div className="section-heading">
+            <div><span className="section-kicker">INCIDENT TIMELINE</span><h2>What Osprey knew, and when</h2></div>
+            <span className="audit-label">AUDIT SEED · {timeline.length} EVENTS</span>
+          </div>
+          <div className="timeline-list">
+            {timeline.map((event, index) => (
+              <article key={event.id}>
+                <time>{formatTime(event.occurredAt)}<small>CT</small></time>
+                <div className="timeline-line"><i /><span /></div>
+                <div><span>{event.actor}</span><strong>{event.title}</strong><p>{event.detail}</p><small>{event.evidenceIds.join(" · ")}</small></div>
+                <b>{String(index + 1).padStart(2, "0")}</b>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <footer className="room-footer">
+          <span>OSPREY · AI-NATIVE INCIDENT COMMAND</span>
+          <p>Live environmental data. Representative infrastructure. No real-world action execution.</p>
+        </footer>
+      </section>
     </main>
   );
 }

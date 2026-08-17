@@ -13,23 +13,23 @@ async function render() {
   );
 }
 
-test("server-renders the Osprey command room", async () => {
+test("server-renders the Houston–Galveston incident room", async () => {
   const response = await render();
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
 
   const html = await response.text();
   assert.match(html, /<title>Osprey/);
-  assert.match(html, /Storm Ember/);
-  assert.match(html, /ACTIVE INCIDENT/);
-  assert.match(html, /Hazard-specific operational views/i);
-  assert.match(html, /LIVE SOURCE MESH/);
-  assert.match(html, /EXPOSURE QUERY/);
-  assert.match(html, /TIME-BASED FORECAST/);
-  assert.match(html, /COLLABORATIVE AGENT TEAM/);
-  assert.match(html, /INCIDENT EVIDENCE GRAPH/);
-  assert.match(html, /DECISION-TO-OUTCOME CHAIN/);
-  assert.match(html, /Review decision packet/);
-  assert.match(html, /OPERATIONAL IMPACT/);
+  assert.match(html, /Houston–Galveston/);
+  assert.match(html, /ACTIVE(?:<!-- -->)? INCIDENT/);
+  assert.match(html, /SHARED INCIDENT STATE/);
+  assert.match(html, /Refresh live intelligence/);
+  assert.match(html, /Weather Agent/);
+  assert.match(html, /Infrastructure Agent/);
+  assert.match(html, /Operations Agent/);
+  assert.match(html, /Communications Agent/);
+  assert.match(html, /EVIDENCE USED/);
+  assert.match(html, /INCIDENT TIMELINE/);
+  assert.match(html, /DEMONSTRATION DECISIONS/);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape/);
 });
