@@ -467,12 +467,9 @@ export function OperationalMap({
         <div className="exposure-result">
           <span>LIVE SPATIAL RESULT</span>
           <strong>{resultTitle}</strong>
-          <small>{geospatialAlerts.length} NWS warning polygons · {warningExposures.length} direct intersections · {elevationSamples}/{assets.length} USGS asset elevations</small>
+          <small>{geospatialAlerts.length === 0 ? "No active NWS warning polygons" : `${geospatialAlerts.length} NWS warning polygons`} · {warningExposures.length} direct intersections · {elevationSamples}/{assets.length} USGS asset elevations</small>
         </div>
         <div className="map-legend"><span><i className="legend-high" />NWS warning</span><span><i className="legend-medium" />Monitor</span><span><i className="legend-normal" />Normal</span><span><i className="legend-terrain" />Terrain</span></div>
-        {mapReady && geospatialAlerts.length === 0 && (
-          <div className="no-warning-geometry"><i>✓</i><span>No active {hazard === "compound" ? "" : `${hazard} `}NWS warning polygons in the operating area</span></div>
-        )}
       </div>
 
       <aside className="feature-inspector" aria-live="polite">
