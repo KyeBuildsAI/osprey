@@ -29,6 +29,31 @@ const mph = (value: number | null | undefined, unitCode?: string) => {
   return Math.round(value);
 };
 
+function windMph(value: string | null | undefined) {
+  if (!value) return null;
+  const values = value.match(/\d+(?:\.\d+)?/g)?.map(Number).filter(Number.isFinite) ?? [];
+  if (values.length === 0) return null;
+  const speed = Math.max(...values);
+  return /km\/h/i.test(value) ? Math.round(speed * 0.621371) : Math.round(speed);
+}
+
+function heatIndexC(temperatureC: number | null, humidityPercent: number | null) {
+  if (temperatureC == null || humidityPercent == null) return null;
+  const temperatureF = temperatureC * 9 / 5 + 32;
+  if (temperatureF < 80 || humidityPercent < 40) return temperatureC;
+  const rh = humidityPercent;
+  const indexF = -42.379
+    + 2.04901523 * temperatureF
+    + 10.14333127 * rh
+    - 0.22475541 * temperatureF * rh
+    - 0.00683783 * temperatureF ** 2
+    - 0.05481717 * rh ** 2
+    + 0.00122874 * temperatureF ** 2 * rh
+    + 0.00085282 * temperatureF * rh ** 2
+    - 0.00000199 * temperatureF ** 2 * rh ** 2;
+  return Math.round((indexF - 32) * 5 / 9);
+}
+
 function isAlertGeometry(value: unknown): value is AlertGeometry {
   if (!value || typeof value !== "object") return false;
   const geometry = value as { type?: string; coordinates?: unknown };
@@ -57,13 +82,28 @@ function intersectsOperationalArea(geometry: AlertGeometry | null, areaDescripti
 
 export async function fetchHoustonWeather(): Promise<WeatherState> {
   const point = await nwsJson<{
-    properties: { forecast: string; observationStations: string; cwa: string };
+    properties: { forecast: string; forecastHourly: string; observationStations: string; cwa: string };
   }>(`https://api.weather.gov/points/${HOUSTON.latitude},${HOUSTON.longitude}`);
 
-  const [forecast, stations, alerts] = await Promise.all([
+  const [forecast, hourly, stations, alerts] = await Promise.all([
     nwsJson<{
       properties: { periods: Array<{ name: string; temperature: number; temperatureUnit: string; shortForecast: string; detailedForecast: string; probabilityOfPrecipitation?: { value: number | null } }> };
     }>(point.properties.forecast),
+    nwsJson<{
+      properties: {
+        periods: Array<{
+          startTime: string;
+          endTime: string;
+          temperature: number;
+          temperatureUnit: string;
+          windSpeed?: string;
+          windDirection?: string;
+          shortForecast?: string;
+          probabilityOfPrecipitation?: { value: number | null };
+          relativeHumidity?: { value: number | null };
+        }>;
+      };
+    }>(point.properties.forecastHourly),
     nwsJson<{ features: Array<{ id: string }> }>(point.properties.observationStations),
     nwsJson<{ features: Array<{ id: string; geometry?: unknown; properties: { event?: string; severity?: string; urgency?: string; headline?: string; description?: string; sent?: string; expires?: string | null; areaDesc?: string } }> }>(
       "https://api.weather.gov/alerts/active?area=TX",
@@ -105,6 +145,21 @@ export async function fetchHoustonWeather(): Promise<WeatherState> {
       } satisfies WeatherAlert;
     })
     .filter((alert) => intersectsOperationalArea(alert.geometry, alert.areaDescription));
+  const forecastFrames = hourly.properties.periods.slice(0, 13).map((period) => {
+    const temperatureC = celsius(period.temperature, period.temperatureUnit);
+    const humidityPercent = period.relativeHumidity?.value == null ? null : Math.round(period.relativeHumidity.value);
+    return {
+      startTime: period.startTime,
+      endTime: period.endTime,
+      temperatureC,
+      heatIndexC: heatIndexC(temperatureC, humidityPercent),
+      humidityPercent,
+      precipitationChance: period.probabilityOfPrecipitation?.value ?? null,
+      windSpeedMph: windMph(period.windSpeed),
+      windDirection: period.windDirection ?? null,
+      summary: period.shortForecast ?? "Forecast detail unavailable",
+    };
+  });
 
   return {
     location: "Houston–Galveston, Texas",
@@ -122,6 +177,7 @@ export async function fetchHoustonWeather(): Promise<WeatherState> {
       temperatureC: celsius(current?.temperature, current?.temperatureUnit),
       precipitationChance: current?.probabilityOfPrecipitation?.value ?? null,
     },
+    forecastFrames,
     activeAlerts: normalizedAlerts,
     observedAt: observation.properties.timestamp,
     fetchedAt: new Date().toISOString(),

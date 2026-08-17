@@ -1,4 +1,5 @@
 import { demoWaterIntelligence, type FloodCategory, type WaterIntelligence } from "@/lib/water-types";
+import { minutesSince, type ConnectorHealth } from "@/lib/source-health";
 
 export type RiskLevel = "LOW" | "MODERATE" | "HIGH" | "SEVERE";
 export type AgentId = "weather" | "infrastructure" | "operations" | "communications";
@@ -37,12 +38,25 @@ export interface WeatherState {
     temperatureC: number | null;
     precipitationChance: number | null;
   };
+  forecastFrames: WeatherForecastFrame[];
   activeAlerts: WeatherAlert[];
   observedAt: string;
   fetchedAt: string;
   source: "National Weather Service";
   sourceOffice: string;
   isLive: boolean;
+}
+
+export interface WeatherForecastFrame {
+  startTime: string;
+  endTime: string;
+  temperatureC: number | null;
+  heatIndexC: number | null;
+  humidityPercent: number | null;
+  precipitationChance: number | null;
+  windSpeedMph: number | null;
+  windDirection: string | null;
+  summary: string;
 }
 
 export interface EvidenceReference {
@@ -106,6 +120,7 @@ export interface IncidentIntelligence {
   };
   weather: WeatherState;
   water: WaterIntelligence;
+  sources: ConnectorHealth[];
   assessments: Record<AgentId, AgentAssessment>;
   assets: InfrastructureAsset[];
   timeline: TimelineEvent[];
@@ -340,6 +355,47 @@ export function createIncidentIntelligence(
   const spatialAlertCount = weather.activeAlerts.filter((alert) => alert.geometry).length;
   const elevationCount = assessedAssets.filter((asset) => asset.elevationM != null).length;
   const infrastructureConfidence = clamp(84 + spatialAlertCount * 2 + elevationCount - (weather.activeAlerts.length === 0 ? 2 : 0), 65, 95);
+  const weatherAge = minutesSince(weather.observedAt, timestamp);
+  const weatherStatus: ConnectorHealth["status"] = !weather.isLive
+    ? "DEMO"
+    : weatherAge != null && weatherAge > 120
+      ? "STALE"
+      : "LIVE";
+  const sources: ConnectorHealth[] = [
+    {
+      id: "nws-weather",
+      name: "National Weather Service",
+      role: "Observations, hourly forecast frames and active alerts",
+      status: weatherStatus,
+      eventTime: weather.observedAt,
+      receivedAt: weather.fetchedAt,
+      ageMinutes: weatherAge,
+      lastAttemptAt: weather.fetchedAt,
+      lastSuccessAt: weather.isLive ? weather.fetchedAt : null,
+      fallback: weather.isLive ? null : "Representative startup snapshot",
+      message: weather.isLive
+        ? `${weather.forecastFrames.length} hourly forecast frames received from ${weather.sourceOffice}.`
+        : "Connecting to the live NWS observation and forecast feeds.",
+      affects: ["Weather assessment", "Forecast timeline", "NWS warning polygons"],
+    },
+    ...water.sourceHealth,
+    {
+      id: "usgs-elevation",
+      name: "USGS 3DEP",
+      role: "Point terrain elevation for selected assets and map locations",
+      status: weather.isLive ? elevationCount > 0 ? "CACHED" : "UNAVAILABLE" : "DEMO",
+      eventTime: elevationCount > 0 ? weather.fetchedAt : null,
+      receivedAt: weather.fetchedAt,
+      ageMinutes: elevationCount > 0 ? 0 : null,
+      lastAttemptAt: weather.fetchedAt,
+      lastSuccessAt: elevationCount > 0 ? weather.fetchedAt : null,
+      fallback: "Verified local elevation samples for the demonstration assets",
+      message: elevationCount > 0
+        ? `${elevationCount} of ${assessedAssets.length} representative assets have elevation context.`
+        : "Asset elevation context is unavailable; other exposure evidence remains visible.",
+      affects: ["Terrain identify", "Low-elevation sensitivity", "Infrastructure exposure"],
+    },
+  ];
 
   const assessments: Record<AgentId, AgentAssessment> = {
     weather: {
@@ -446,6 +502,7 @@ export function createIncidentIntelligence(
     },
     weather,
     water,
+    sources,
     assessments,
     assets: assessedAssets,
     timeline: [
@@ -476,6 +533,13 @@ export const demoWeather: WeatherState = {
     temperatureC: 36,
     precipitationChance: 20,
   },
+  forecastFrames: [
+    { startTime: "2026-08-17T16:00:00.000Z", endTime: "2026-08-17T17:00:00.000Z", temperatureC: 33, heatIndexC: 37, humidityPercent: 64, precipitationChance: 20, windSpeedMph: 12, windDirection: "S", summary: "Partly cloudy" },
+    { startTime: "2026-08-17T19:00:00.000Z", endTime: "2026-08-17T20:00:00.000Z", temperatureC: 35, heatIndexC: 39, humidityPercent: 60, precipitationChance: 20, windSpeedMph: 13, windDirection: "S", summary: "Hot and partly cloudy" },
+    { startTime: "2026-08-17T22:00:00.000Z", endTime: "2026-08-17T23:00:00.000Z", temperatureC: 34, heatIndexC: 38, humidityPercent: 63, precipitationChance: 25, windSpeedMph: 12, windDirection: "SE", summary: "Isolated showers possible" },
+    { startTime: "2026-08-18T01:00:00.000Z", endTime: "2026-08-18T02:00:00.000Z", temperatureC: 31, heatIndexC: 35, humidityPercent: 70, precipitationChance: 20, windSpeedMph: 10, windDirection: "SE", summary: "Partly cloudy" },
+    { startTime: "2026-08-18T04:00:00.000Z", endTime: "2026-08-18T05:00:00.000Z", temperatureC: 29, heatIndexC: 33, humidityPercent: 76, precipitationChance: 15, windSpeedMph: 8, windDirection: "S", summary: "Warm and humid" },
+  ],
   activeAlerts: [],
   observedAt: "2026-08-17T16:00:00.000Z",
   fetchedAt: "2026-08-17T16:01:00.000Z",

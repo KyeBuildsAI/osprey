@@ -300,6 +300,7 @@ export function OperationalMap({
   water,
   layer,
   forecastHour,
+  forecastValidAt,
   hazard,
   onFeatureSelect,
   onOpenInfrastructure,
@@ -309,6 +310,7 @@ export function OperationalMap({
   water: WaterIntelligence;
   layer: MapLayer;
   forecastHour: number;
+  forecastValidAt: string | null;
   hazard: HazardId;
   onFeatureSelect?: (feature: MapFeatureSelection) => void;
   onOpenInfrastructure?: () => void;
@@ -522,8 +524,8 @@ export function OperationalMap({
     setSourceData(map, "osprey-query", queryFeature(query));
     map.setPaintProperty("osprey-warning-fill", "fill-opacity", layer === "Risk" ? 0.42 : layer === "Impact" ? 0.28 : 0.12);
     map.setPaintProperty("osprey-assets", "circle-radius", layer === "Assets" ? ["match", ["get", "criticality"], "CRITICAL", 13, 10] : ["match", ["get", "criticality"], "CRITICAL", 10, 8]);
-    map.setPaintProperty("osprey-query-fill", "fill-opacity", query === "Assets" ? 0.015 : 0.08 + forecastHour * 0.002);
-  }, [assets, forecastHour, layer, mapReady, query, visibleAlerts, water]);
+    map.setPaintProperty("osprey-query-fill", "fill-opacity", query === "Assets" ? 0.015 : 0.08);
+  }, [assets, layer, mapReady, query, visibleAlerts, water]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -558,7 +560,7 @@ export function OperationalMap({
           <div className="place place-galveston"><i /><strong>Galveston</strong><small>Coastal assets</small></div>
         </div>
         <div ref={containerRef} className="geospatial-map" aria-label="Interactive Houston–Galveston infrastructure and terrain map" />
-        <div className="map-time"><span>{layer.toUpperCase()} · INFRASTRUCTURE WINDOW</span><strong>NOW + {forecastHour} HOURS</strong></div>
+        <div className="map-time"><span>{layer.toUpperCase()} · INFRASTRUCTURE WINDOW · NWS FORECAST FRAME</span><strong>{forecastHour === 0 ? "NOW" : `NOW + ${forecastHour} HOURS`}{forecastValidAt ? ` · ${new Intl.DateTimeFormat("en-GB", { timeZone: "America/Chicago", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(forecastValidAt))} CT` : ""}</strong></div>
         <div className="geo-source-status"><i className={mapReady ? "geo-ready" : ""} /><span>{mapError && !mapReady ? "GEOGRAPHIC FALLBACK ACTIVE" : mapReady ? "DETAILED VECTOR MAP · LIVE" : "LOADING INFRASTRUCTURE MAP"}</span></div>
         <div className="query-toolbar" aria-label="Map exposure query">
           <span>EXPOSURE QUERY</span>

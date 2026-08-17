@@ -91,6 +91,7 @@ export interface WaterIntelligence {
   fetchedAt: string;
   isLive: boolean;
   warnings: string[];
+  sourceHealth: ConnectorHealth[];
 }
 
 export const demoWaterIntelligence: WaterIntelligence = {
@@ -154,4 +155,49 @@ export const demoWaterIntelligence: WaterIntelligence = {
   fetchedAt: "2026-08-17T16:01:00.000Z",
   isLive: false,
   warnings: [],
+  sourceHealth: [
+    {
+      id: "river-observations",
+      name: "NOAA NWPS + USGS",
+      role: "River levels, trends and flood-stage metadata",
+      status: "DEMO",
+      eventTime: "2026-08-17T16:00:00.000Z",
+      receivedAt: "2026-08-17T16:01:00.000Z",
+      ageMinutes: 1,
+      lastAttemptAt: "2026-08-17T16:01:00.000Z",
+      lastSuccessAt: null,
+      fallback: "Verified NOAA threshold metadata cache",
+      message: "Connecting to live river observations.",
+      affects: ["Flood lens", "Gauge stage ladder", "Infrastructure exposure"],
+    },
+    {
+      id: "coastal-observations",
+      name: "NOAA CO-OPS",
+      role: "Observed and predicted coastal water levels",
+      status: "DEMO",
+      eventTime: "2026-08-17T16:00:00.000Z",
+      receivedAt: "2026-08-17T16:01:00.000Z",
+      ageMinutes: 1,
+      lastAttemptAt: "2026-08-17T16:01:00.000Z",
+      lastSuccessAt: null,
+      fallback: null,
+      message: "Connecting to live coastal observations.",
+      affects: ["Coastal lens", "Tide anomaly", "Coastal asset exposure"],
+    },
+    {
+      id: "fema-nfhl",
+      name: "FEMA NFHL",
+      role: "Mapped Special Flood Hazard Areas",
+      status: "DEMO",
+      eventTime: "2026-05-13T16:56:59.825Z",
+      receivedAt: "2026-08-17T22:29:32.086Z",
+      ageMinutes: null,
+      lastAttemptAt: "2026-08-17T22:29:32.086Z",
+      lastSuccessAt: "2026-08-17T22:29:32.086Z",
+      fallback: "Bundled verified regional snapshot",
+      message: "Loading the verified flood-zone snapshot.",
+      affects: ["Flood-zone overlay", "Feature identify", "Mapped hazard context"],
+    },
+  ],
 };
+import type { ConnectorHealth } from "@/lib/source-health";

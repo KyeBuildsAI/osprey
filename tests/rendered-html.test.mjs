@@ -23,6 +23,10 @@ test("server-renders the Houston–Galveston incident room", async () => {
   assert.match(html, /Houston–Galveston/);
   assert.match(html, /ACTIVE(?:<!-- -->)? INCIDENT/);
   assert.match(html, /SHARED INCIDENT STATE/);
+  assert.match(html, /SOURCE HEALTH &amp; PROVENANCE/);
+  assert.match(html, /Every operational claim has a visible data state/);
+  assert.match(html, /Event time/);
+  assert.match(html, /Received/);
   assert.match(html, /Refresh live intelligence/);
   assert.match(html, /OPERATIONAL MAP/);
   assert.match(html, /INFRASTRUCTURE WINDOW/);
@@ -51,6 +55,7 @@ test("server-renders the Houston–Galveston incident room", async () => {
   assert.match(html, /Terrain/);
   assert.match(html, /Source boundary/);
   assert.match(html, /TIME-BASED FORECAST/);
+  assert.match(html, /LIVE HOURLY NWS · issued frame · valid time shown/);
   assert.match(html, /Weather Agent/);
   assert.match(html, /Infrastructure Agent/);
   assert.match(html, /Operations Agent/);

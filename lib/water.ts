@@ -1,4 +1,5 @@
 import { FEMA_REFRESH_INTERVAL_DAYS, getFemaSnapshot } from "@/lib/fema";
+import { minutesSince, type ConnectorHealth } from "@/lib/source-health";
 import type {
   CoastalStation,
   FloodCategory,
@@ -379,6 +380,72 @@ export async function fetchWaterIntelligence(): Promise<WaterIntelligence> {
     cacheTtlHours: 24 as const,
     pendingRetryMinutes: 15 as const,
   };
+  const latestRiverObservation = riverGauges
+    .map((gauge) => gauge.observedAt)
+    .filter(Boolean)
+    .sort((a, b) => Date.parse(b) - Date.parse(a))[0] ?? null;
+  const latestCoastalObservation = coastalStations
+    .map((station) => station.observedAt)
+    .filter(Boolean)
+    .sort((a, b) => Date.parse(b) - Date.parse(a))[0] ?? null;
+  const riverAge = minutesSince(latestRiverObservation);
+  const coastalAge = minutesSince(latestCoastalObservation);
+  const sourceHealth: ConnectorHealth[] = [
+    {
+      id: "river-observations",
+      name: "NOAA NWPS + USGS",
+      role: "River levels, trends and flood-stage metadata",
+      status: riverGauges.length === 0 ? "UNAVAILABLE" : riverAge != null && riverAge > 120 ? "STALE" : riverGauges.length < selectedGaugeCatalog.length ? "DEGRADED" : "LIVE",
+      eventTime: latestRiverObservation,
+      receivedAt: fetchedAt,
+      ageMinutes: riverAge,
+      lastAttemptAt: fetchedAt,
+      lastSuccessAt: riverGauges.length > 0 ? fetchedAt : null,
+      fallback: "Verified NOAA threshold metadata cache",
+      message: riverGauges.length === 0
+        ? "River observations are unavailable; no live gauge state is inferred."
+        : `${riverGauges.length} of ${selectedGaugeCatalog.length} selected river gauges reporting.`,
+      affects: ["Flood lens", "Gauge stage ladder", "Infrastructure exposure"],
+    },
+    {
+      id: "coastal-observations",
+      name: "NOAA CO-OPS",
+      role: "Observed and predicted coastal water levels",
+      status: coastalStations.length === 0 ? "UNAVAILABLE" : coastalAge != null && coastalAge > 120 ? "STALE" : coastalStations.length < selectedCoastalStations.length ? "DEGRADED" : "LIVE",
+      eventTime: latestCoastalObservation,
+      receivedAt: fetchedAt,
+      ageMinutes: coastalAge,
+      lastAttemptAt: fetchedAt,
+      lastSuccessAt: coastalStations.length > 0 ? fetchedAt : null,
+      fallback: null,
+      message: coastalStations.length === 0
+        ? "Coastal observations are unavailable; river observations remain independent."
+        : `${coastalStations.length} of ${selectedCoastalStations.length} selected coastal stations reporting.`,
+      affects: ["Coastal lens", "Tide anomaly", "Coastal asset exposure"],
+    },
+    {
+      id: "fema-nfhl",
+      name: "FEMA NFHL",
+      role: "Mapped Special Flood Hazard Areas",
+      status: zoneResult.status === "rejected"
+        ? "UNAVAILABLE"
+        : zoneResult.value.refresh.lastOutcome === "FAILURE"
+          ? "PENDING"
+          : zoneResult.value.source.kind === "FEMA_OFFICIAL"
+            ? "LIVE"
+            : "CACHED",
+      eventTime: zoneResult.status === "fulfilled" ? zoneResult.value.source.dataUpdatedAt : null,
+      receivedAt: fetchedAt,
+      ageMinutes: zoneResult.status === "fulfilled" ? minutesSince(zoneResult.value.source.dataUpdatedAt) : null,
+      lastAttemptAt: zoneResult.status === "fulfilled" ? zoneResult.value.refresh.lastAttemptAt : fetchedAt,
+      lastSuccessAt: zoneResult.status === "fulfilled" ? zoneResult.value.source.verifiedAt : null,
+      fallback: "Bundled and R2-backed verified regional snapshot",
+      message: zoneResult.status === "rejected"
+        ? "No verified flood-zone snapshot is currently available."
+        : zoneResult.value.refresh.message,
+      affects: ["Flood-zone overlay", "Feature identify", "Mapped hazard context"],
+    },
+  ];
   return {
     riverGauges,
     coastalStations,
@@ -414,5 +481,6 @@ export async function fetchWaterIntelligence(): Promise<WaterIntelligence> {
     fetchedAt,
     isLive: riverGauges.length > 0 || coastalStations.length > 0,
     warnings,
+    sourceHealth,
   };
 }

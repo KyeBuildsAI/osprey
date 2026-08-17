@@ -100,6 +100,19 @@ function floodZoneStatusLabel(status: IncidentIntelligence["water"]["floodZoneSt
   return status;
 }
 
+function sourceFreshnessLabel(source: IncidentIntelligence["sources"][number]) {
+  if (source.status === "DEMO") return "Connecting";
+  if (source.ageMinutes == null) return "No current event time";
+  if (source.ageMinutes < 1) return "Less than 1 minute old";
+  if (source.ageMinutes < 60) return `${source.ageMinutes} minutes old`;
+  if (source.ageMinutes < 1_440) return `${Math.round(source.ageMinutes / 60)} hours old`;
+  return `${Math.round(source.ageMinutes / 1_440)} days old`;
+}
+
+function forecastOffsetHours(first: string, current: string) {
+  return Math.max(0, Math.round((Date.parse(current) - Date.parse(first)) / 3_600_000));
+}
+
 function AssessmentCard({ assessment, active, onOpen }: { assessment: AgentAssessment; active: boolean; onOpen: () => void }) {
   return (
     <article className={`assessment-card ${active ? "assessment-active" : ""}`}>
@@ -129,7 +142,7 @@ export default function Home() {
   const [openAgent, setOpenAgent] = useState<AgentId>("weather");
   const [activeHazardId, setActiveHazardId] = useState<(typeof hazardViews)[number]["id"]>("compound");
   const [mapLayer, setMapLayer] = useState<"Risk" | "Impact" | "Assets">("Risk");
-  const [forecastHour, setForecastHour] = useState(3);
+  const [forecastFrameIndex, setForecastFrameIndex] = useState(0);
   const [decisionOpen, setDecisionOpen] = useState(false);
   const [selectedOption, setSelectedOption] = useState<(typeof decisionOptions)[number]["id"]>("COA-02");
   const [packetQueued, setPacketQueued] = useState(false);
@@ -184,6 +197,12 @@ export default function Home() {
   const sourceEvidence = [assessments.weather.evidence[0], ...assessments.infrastructure.evidence.slice(0, 2)].filter(Boolean);
   const leadGauge = [...water.riverGauges].sort((a, b) => (b.percentToAction ?? -1) - (a.percentToAction ?? -1))[0];
   const leadCoast = [...water.coastalStations].sort((a, b) => Math.abs(b.anomalyM ?? 0) - Math.abs(a.anomalyM ?? 0))[0];
+  const forecastFrames = weather.forecastFrames.length > 0 ? weather.forecastFrames : [];
+  const selectedForecastFrame = forecastFrames[Math.min(forecastFrameIndex, Math.max(0, forecastFrames.length - 1))] ?? null;
+  const firstForecastTime = forecastFrames[0]?.startTime ?? weather.fetchedAt;
+  const forecastHour = selectedForecastFrame ? forecastOffsetHours(firstForecastTime, selectedForecastFrame.startTime) : 0;
+  const forecastMarkIndexes = [...new Set([0, 3, 6, 9, 12].map((index) => Math.min(index, Math.max(0, forecastFrames.length - 1))))];
+  const reportingSources = intelligence.sources.filter((source) => ["LIVE", "CACHED"].includes(source.status)).length;
 
   const openInfrastructureContext = useCallback(() => {
     setOpenAgent("infrastructure");
@@ -206,10 +225,10 @@ export default function Home() {
         </nav>
 
         <div className="sidebar-status">
-          <span className={`source-dot ${weather.isLive ? "source-live" : "source-waiting"}`} />
+          <span className={`source-dot ${reportingSources === intelligence.sources.length ? "source-live" : "source-waiting"}`} />
           <div>
-            <strong>{weather.isLive ? "NWS connected" : "Connecting to NWS"}</strong>
-            <small>{weather.sourceOffice} · normalized source</small>
+            <strong>{reportingSources}/{intelligence.sources.length} sources ready</strong>
+            <small>Health · freshness · provenance</small>
           </div>
         </div>
         <div className="operator">
@@ -281,6 +300,27 @@ export default function Home() {
           <small>Each specialist reads the accepted findings before it and publishes evidence-bound output back to the same incident.</small>
         </section>
 
+        <section className="source-health-panel" aria-label="Operational source health and provenance">
+          <div className="source-health-heading">
+            <div><span className="section-kicker">SOURCE HEALTH &amp; PROVENANCE</span><h2>Every operational claim has a visible data state.</h2></div>
+            <span>{reportingSources}/{intelligence.sources.length} live or verified</span>
+          </div>
+          <div className="source-health-grid">
+            {intelligence.sources.map((source) => (
+              <article className={`source-health-card source-state-${source.status.toLowerCase()}`} key={source.id}>
+                <header><span><i />{source.status}</span><small>{sourceFreshnessLabel(source)}</small></header>
+                <strong>{source.name}</strong>
+                <p>{source.role}</p>
+                <dl>
+                  <div><dt>Event time</dt><dd>{source.eventTime ? `${formatTime(source.eventTime, true)} CT` : "Not available"}</dd></div>
+                  <div><dt>Received</dt><dd>{formatTime(source.receivedAt, true)} CT</dd></div>
+                </dl>
+                <footer>{source.message}{source.fallback ? <small>Fallback: {source.fallback}</small> : null}</footer>
+              </article>
+            ))}
+          </div>
+        </section>
+
         <section className="operational-workspace" id="operational-map">
           <div className="hazard-lenses" aria-label="Hazard-specific operational views">
             <span>OPERATIONAL LENS</span>
@@ -314,15 +354,25 @@ export default function Home() {
               water={water}
               layer={mapLayer}
               forecastHour={forecastHour}
+              forecastValidAt={selectedForecastFrame?.startTime ?? null}
               hazard={activeHazard.id}
               onFeatureSelect={setSelectedMapFeature}
               onOpenInfrastructure={openInfrastructureContext}
             />
             <div className="forecast-control">
-              <div><span className="section-kicker">TIME-BASED FORECAST</span><strong>{weather.forecast.period} · {weather.forecast.summary}</strong></div>
+              <div>
+                <span className="section-kicker">TIME-BASED FORECAST</span>
+                <strong>{selectedForecastFrame ? `${formatTime(selectedForecastFrame.startTime, true)} CT · ${selectedForecastFrame.summary}` : `${weather.forecast.period} · ${weather.forecast.summary}`}</strong>
+                <small>LIVE HOURLY NWS · issued frame · valid time shown</small>
+              </div>
               <div className="forecast-track">
-                <input aria-label="Forecast hour" type="range" min="0" max="12" step="3" value={forecastHour} onChange={(event) => setForecastHour(Number(event.target.value))} />
-                <div><span>Now</span><span>+3h</span><span>+6h</span><span>+9h</span><span>+12h</span></div>
+                <input aria-label="NWS hourly forecast frame" type="range" min="0" max={Math.max(0, forecastFrames.length - 1)} step="1" value={Math.min(forecastFrameIndex, Math.max(0, forecastFrames.length - 1))} onChange={(event) => setForecastFrameIndex(Number(event.target.value))} />
+                <div>{forecastMarkIndexes.map((index) => <span key={index}>{index === 0 ? "Now" : `+${forecastOffsetHours(firstForecastTime, forecastFrames[index]?.startTime ?? firstForecastTime)}h`}</span>)}</div>
+              </div>
+              <div className="forecast-frame-metrics">
+                <span><small>RAIN</small><strong>{selectedForecastFrame?.precipitationChance ?? "—"}%</strong></span>
+                <span><small>TEMP / FEELS</small><strong>{selectedForecastFrame?.temperatureC ?? "—"}° / {selectedForecastFrame?.heatIndexC ?? "—"}°</strong></span>
+                <span><small>WIND</small><strong>{selectedForecastFrame?.windDirection ?? "—"} {selectedForecastFrame?.windSpeedMph ?? "—"} mph</strong></span>
               </div>
               <div className="forecast-confidence"><span>{assessments.weather.confidence}%</span><small>weather confidence</small></div>
             </div>
