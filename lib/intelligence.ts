@@ -1,6 +1,10 @@
 export type RiskLevel = "LOW" | "MODERATE" | "HIGH" | "SEVERE";
 export type AgentId = "weather" | "infrastructure" | "operations" | "communications";
 
+export type AlertGeometry =
+  | { type: "Polygon"; coordinates: number[][][] }
+  | { type: "MultiPolygon"; coordinates: number[][][][] };
+
 export interface WeatherAlert {
   id: string;
   event: string;
@@ -10,6 +14,8 @@ export interface WeatherAlert {
   description: string;
   sentAt: string;
   expiresAt: string | null;
+  areaDescription: string;
+  geometry: AlertGeometry | null;
 }
 
 export interface WeatherState {
@@ -52,6 +58,10 @@ export interface InfrastructureAsset {
   criticality: "MEDIUM" | "HIGH" | "CRITICAL";
   vulnerability: string;
   location: string;
+  latitude: number;
+  longitude: number;
+  elevationM: number | null;
+  elevationSource: "USGS 3DEP" | "Unavailable";
   exposure: "NORMAL" | "MONITOR" | "ELEVATED";
   reason: string;
 }
@@ -98,7 +108,7 @@ export interface IncidentIntelligence {
   timeline: TimelineEvent[];
 }
 
-const assets: Omit<InfrastructureAsset, "exposure" | "reason">[] = [
+export const infrastructureAssetFixtures: Omit<InfrastructureAsset, "exposure" | "reason">[] = [
   {
     id: "ASSET-HOSP-01",
     name: "Galveston Medical Centre",
@@ -106,6 +116,10 @@ const assets: Omit<InfrastructureAsset, "exposure" | "reason">[] = [
     criticality: "CRITICAL",
     vulnerability: "Heat load, coastal flooding and access disruption",
     location: "Galveston Island",
+    latitude: 29.3013,
+    longitude: -94.7977,
+    elevationM: null,
+    elevationSource: "Unavailable",
   },
   {
     id: "ASSET-PUMP-14",
@@ -114,6 +128,10 @@ const assets: Omit<InfrastructureAsset, "exposure" | "reason">[] = [
     criticality: "HIGH",
     vulnerability: "Surface-water flooding above high rainfall thresholds",
     location: "Southeast Houston",
+    latitude: 29.6743,
+    longitude: -95.2511,
+    elevationM: null,
+    elevationSource: "Unavailable",
   },
   {
     id: "ASSET-ROUTE-45",
@@ -122,6 +140,10 @@ const assets: Omit<InfrastructureAsset, "exposure" | "reason">[] = [
     criticality: "HIGH",
     vulnerability: "Wind, standing water and coastal access constraint",
     location: "Houston–Galveston corridor",
+    latitude: 29.5061,
+    longitude: -95.0892,
+    elevationM: null,
+    elevationSource: "Unavailable",
   },
 ];
 
@@ -171,28 +193,67 @@ function evidenceFor(weather: WeatherState): EvidenceReference[] {
   );
 }
 
-function assessAssets(risk: RiskLevel, hazard: string): InfrastructureAsset[] {
+function pointInRing(longitude: number, latitude: number, ring: number[][]) {
+  let inside = false;
+  for (let index = 0, previous = ring.length - 1; index < ring.length; previous = index++) {
+    const [x, y] = ring[index];
+    const [previousX, previousY] = ring[previous];
+    const intersects = y > latitude !== previousY > latitude
+      && longitude < ((previousX - x) * (latitude - y)) / ((previousY - y) || Number.EPSILON) + x;
+    if (intersects) inside = !inside;
+  }
+  return inside;
+}
+
+function pointInAlert(longitude: number, latitude: number, geometry: AlertGeometry | null) {
+  if (!geometry) return false;
+  const polygons = geometry.type === "Polygon" ? [geometry.coordinates] : geometry.coordinates;
+  return polygons.some((polygon) => pointInRing(longitude, latitude, polygon[0] ?? []));
+}
+
+function assessAssets(
+  weather: WeatherState,
+  risk: RiskLevel,
+  hazard: string,
+  elevations: Record<string, number | null>,
+): InfrastructureAsset[] {
   const hazardText = hazard.toLowerCase();
-  return assets.map((asset) => {
+  return infrastructureAssetFixtures.map((asset) => {
+    const elevationM = elevations[asset.id] ?? null;
+    const intersectingAlert = weather.activeAlerts.find((alert) => pointInAlert(asset.longitude, asset.latitude, alert.geometry));
     const heatRelevant = hazardText.includes("heat") && asset.id === "ASSET-HOSP-01";
     const floodRelevant = hazardText.includes("flood") && asset.id !== "ASSET-HOSP-01";
     const windRelevant = /wind|hurricane|tornado/.test(hazardText) && asset.id === "ASSET-ROUTE-45";
-    const relevant = heatRelevant || floodRelevant || windRelevant;
-    const exposure = relevant && ["HIGH", "SEVERE"].includes(risk) ? "ELEVATED" : relevant || risk === "MODERATE" ? "MONITOR" : "NORMAL";
+    const lowElevationFloodExposure = elevationM != null && elevationM <= 4 && /flood|storm surge|hurricane/.test(hazardText);
+    const relevant = Boolean(intersectingAlert) || lowElevationFloodExposure || heatRelevant || floodRelevant || windRelevant;
+    const exposure = (intersectingAlert || lowElevationFloodExposure) && ["HIGH", "SEVERE"].includes(risk)
+      ? "ELEVATED"
+      : relevant || risk === "MODERATE"
+        ? "MONITOR"
+        : "NORMAL";
     return {
       ...asset,
+      elevationM,
+      elevationSource: elevationM == null ? "Unavailable" : "USGS 3DEP",
       exposure,
-      reason: relevant
-        ? `${hazard} intersects this asset's declared vulnerability.`
-        : `${asset.type} remains in the shared operating picture; no direct threshold is crossed.`,
+      reason: intersectingAlert
+        ? `Located inside the live NWS ${intersectingAlert.event} polygon.`
+        : lowElevationFloodExposure
+          ? `${Math.round(elevationM)} m USGS elevation increases sensitivity to ${hazard.toLowerCase()}.`
+          : relevant
+            ? `${hazard} intersects this asset's declared vulnerability.`
+            : `${asset.type} remains in the shared operating picture; no spatial or vulnerability threshold is crossed.`,
     };
   });
 }
 
-export function createIncidentIntelligence(weather: WeatherState): IncidentIntelligence {
+export function createIncidentIntelligence(
+  weather: WeatherState,
+  elevations: Record<string, number | null> = {},
+): IncidentIntelligence {
   const { risk, hazard } = weatherRisk(weather);
   const evidence = evidenceFor(weather);
-  const assessedAssets = assessAssets(risk, hazard);
+  const assessedAssets = assessAssets(weather, risk, hazard, elevations);
   const exposedAssets = assessedAssets.filter((asset) => asset.exposure !== "NORMAL");
   const infrastructureRisk: RiskLevel = exposedAssets.some((asset) => asset.exposure === "ELEVATED")
     ? "HIGH"
@@ -204,7 +265,9 @@ export function createIncidentIntelligence(weather: WeatherState): IncidentIntel
   const timestamp = new Date(weather.fetchedAt).getTime();
   const timeAt = (offset: number) => new Date(timestamp + offset).toISOString();
   const weatherConfidence = clamp((weather.isLive ? 94 : 82) - (weather.observedAt ? 0 : 10), 65, 97);
-  const infrastructureConfidence = clamp(88 - (weather.activeAlerts.length === 0 ? 2 : 0), 65, 94);
+  const spatialAlertCount = weather.activeAlerts.filter((alert) => alert.geometry).length;
+  const elevationCount = assessedAssets.filter((asset) => asset.elevationM != null).length;
+  const infrastructureConfidence = clamp(84 + spatialAlertCount * 2 + elevationCount - (weather.activeAlerts.length === 0 ? 2 : 0), 65, 95);
 
   const assessments: Record<AgentId, AgentAssessment> = {
     weather: {
@@ -240,7 +303,7 @@ export function createIncidentIntelligence(weather: WeatherState): IncidentIntel
       findings: assessedAssets.map((asset) => `${asset.name}: ${asset.exposure.toLowerCase()} — ${asset.reason}`),
       evidence: [
         ...evidence.slice(0, 2),
-        { id: "ASSET-REGISTER-001", label: "Representative critical-asset register", value: `${assessedAssets.length} assets evaluated against declared vulnerabilities`, source: "Osprey demonstration fixture v1", observedAt: weather.fetchedAt },
+        { id: "ASSET-REGISTER-001", label: "Geocoded representative critical-asset register", value: `${assessedAssets.length} assets evaluated · ${spatialAlertCount} live warning polygons · ${elevationCount} USGS elevation samples`, source: "Osprey demonstration fixture + NWS GeoJSON + USGS 3DEP", observedAt: weather.fetchedAt },
       ],
       watchFor: ["Pump capacity during heavy rainfall", "Hospital cooling continuity during dangerous heat", "I-45 access constraints"],
       affectedAssets: assessedAssets,
@@ -312,7 +375,7 @@ export function createIncidentIntelligence(weather: WeatherState): IncidentIntel
     timeline: [
       { id: "TL-001", occurredAt: timeAt(0), actor: "NWS adapter", title: "Live weather intelligence refreshed", detail: `${evidence.length} normalized evidence records added to shared incident state.`, evidenceIds: evidence.map((item) => item.id) },
       { id: "TL-002", occurredAt: timeAt(1000), actor: "Weather Agent", title: "Weather assessment completed", detail: `${risk} risk · ${weatherConfidence}% confidence · ${hazard}.`, evidenceIds: evidence.map((item) => item.id) },
-      { id: "TL-003", occurredAt: timeAt(2000), actor: "Infrastructure Agent", title: "Critical-asset exposure assessed", detail: `${exposedAssets.length} of ${assessedAssets.length} assets require monitoring.`, evidenceIds: ["ASSET-REGISTER-001", ...evidence.slice(0, 2).map((item) => item.id)] },
+      { id: "TL-003", occurredAt: timeAt(2000), actor: "Infrastructure Agent", title: "Spatial exposure assessed", detail: `${exposedAssets.length} of ${assessedAssets.length} geocoded assets require monitoring across ${spatialAlertCount} live NWS warning polygons.`, evidenceIds: ["ASSET-REGISTER-001", ...evidence.slice(0, 2).map((item) => item.id)] },
       { id: "TL-004", occurredAt: timeAt(3000), actor: "Operations Agent", title: interventionRequired ? "Reversible preparation proposed" : "Monitoring posture recommended", detail: assessments.operations.summary, evidenceIds: ["INFRA-ASSESS-001"] },
       { id: "TL-005", occurredAt: timeAt(4000), actor: "Communications Agent", title: assessments.communications.headline, detail: "No message or external effect has been released.", evidenceIds: ["OPS-RECOMMEND-001"] },
     ],

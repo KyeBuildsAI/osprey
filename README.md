@@ -16,13 +16,17 @@ replacement GIS or another collection of disaster dashboards. See
 The repository contains Osprey's first working incident-room spine:
 
 - live Houston–Galveston observations, forecast and alerts from the US National Weather Service
+- an interactive MapLibre operational map with live NWS GeoJSON warning polygons
+- geocoded representative assets, real radius/polygon queries and USGS 3DEP elevation samples
 - a normalized internal weather contract that isolates the interface from the NWS schema
 - Weather, Infrastructure, Operations and Communications assessments over one shared incident state
 - evidence references, confidence, representative critical assets and an incident timeline
 - a manual live-intelligence refresh and visible source/demo boundaries
 
-The weather feed is live. The infrastructure register and all proposed decisions
-remain representative demonstration data; Osprey releases no external effects.
+The weather and warning geometry are live. Elevation values are sampled and
+cached from USGS 3DEP because terrain height is stable and should not delay an
+operator refresh. The infrastructure register and all proposed decisions remain
+representative demonstration data; Osprey releases no external effects.
 
 ## Documentation
 

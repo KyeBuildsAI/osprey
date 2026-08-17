@@ -25,7 +25,11 @@ test("server-renders the Houston–Galveston incident room", async () => {
   assert.match(html, /SHARED INCIDENT STATE/);
   assert.match(html, /Refresh live intelligence/);
   assert.match(html, /OPERATIONAL MAP/);
+  assert.match(html, /LIVE GEOSPATIAL WINDOW/);
+  assert.match(html, /LOADING GEOSPATIAL MAP/);
   assert.match(html, /EXPOSURE QUERY/);
+  assert.match(html, /NWS warning polygons/);
+  assert.match(html, /USGS elevation samples/);
   assert.match(html, /TIME-BASED FORECAST/);
   assert.match(html, /Weather Agent/);
   assert.match(html, /Infrastructure Agent/);

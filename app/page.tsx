@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { OperationalMap } from "@/components/OperationalMap";
 import {
   demoIntelligence,
   type AgentAssessment,
@@ -17,14 +18,6 @@ const hazardViews = [
   { id: "wind", label: "Wind", focus: "Power and access continuity", status: "Monitor" },
   { id: "heat", label: "Heat", focus: "Health and cooling continuity", status: "Monitor" },
 ] as const;
-
-const exposureQueries = {
-  Radius: "8 priority zones · 21,400 people",
-  Polygon: "3 critical assets · 2 access routes",
-  Assets: "3 critical assets · 3 accountable owners",
-} as const;
-
-type ExposureQuery = keyof typeof exposureQueries;
 
 const decisionOptions = [
   { id: "COA-01", posture: "monitor", title: "Monitor and verify", summary: "Maintain the current posture while the next NWS update and asset-owner checks complete.", benefit: "Avoids unnecessary mobilisation while conditions remain stable.", tradeoff: "Leaves less preparation time if conditions deteriorate quickly." },
@@ -89,7 +82,6 @@ export default function Home() {
   const [openAgent, setOpenAgent] = useState<AgentId>("weather");
   const [activeHazardId, setActiveHazardId] = useState<(typeof hazardViews)[number]["id"]>("compound");
   const [mapLayer, setMapLayer] = useState<"Risk" | "Impact" | "Assets">("Risk");
-  const [exposureQuery, setExposureQuery] = useState<ExposureQuery>("Polygon");
   const [forecastHour, setForecastHour] = useState(3);
   const [decisionOpen, setDecisionOpen] = useState(false);
   const [selectedOption, setSelectedOption] = useState<(typeof decisionOptions)[number]["id"]>("COA-02");
@@ -232,28 +224,13 @@ export default function Home() {
                 ))}
               </div>
             </div>
-            <div className={`map-surface map-layer-${mapLayer.toLowerCase()} map-hour-${forecastHour}`}>
-              <div className="map-grid-lines" />
-              <div className="coast-shape" />
-              <div className="bay-water"><span>GALVESTON BAY</span></div>
-              <div className="risk-area risk-high"><span>HOUSTON</span></div>
-              <div className="risk-area risk-medium"><span>CLEAR LAKE</span></div>
-              <div className="query-shape"><span>SELECTED AREA</span></div>
-              <div className="place place-houston"><i /><strong>Houston</strong><small>{weather.condition}</small></div>
-              <div className="place place-galveston"><i /><strong>Galveston</strong><small>Coastal assets</small></div>
-              <div className="place place-clear-lake"><i /><strong>Clear Lake</strong><small>Access corridor</small></div>
-              <div className="map-time"><span>{mapLayer.toUpperCase()} · OPERATING WINDOW</span><strong>NOW + {forecastHour} HOURS</strong></div>
-              <div className="query-toolbar" aria-label="Map exposure query">
-                <span>EXPOSURE QUERY</span>
-                <div>
-                  {(Object.keys(exposureQueries) as ExposureQuery[]).map((query) => (
-                    <button key={query} className={exposureQuery === query ? "query-selected" : ""} onClick={() => setExposureQuery(query)} aria-pressed={exposureQuery === query}>{query}</button>
-                  ))}
-                </div>
-              </div>
-              <div className="exposure-result"><span>SELECTION RESULT</span><strong>{exposureQueries[exposureQuery]}</strong><small>Joined across representative GIS, asset and community records</small></div>
-              <div className="map-legend"><span><i className="legend-high" />High</span><span><i className="legend-medium" />Elevated</span><span><i className="legend-water" />Water</span></div>
-            </div>
+            <OperationalMap
+              alerts={weather.activeAlerts}
+              assets={assets}
+              layer={mapLayer}
+              forecastHour={forecastHour}
+              hazard={activeHazard.id}
+            />
             <div className="forecast-control">
               <div><span className="section-kicker">TIME-BASED FORECAST</span><strong>{weather.forecast.period} · {weather.forecast.summary}</strong></div>
               <div className="forecast-track">
@@ -361,12 +338,12 @@ export default function Home() {
               {assets.map((asset) => (
                 <article key={asset.id}>
                   <span className={`asset-state asset-${asset.exposure.toLowerCase()}`}>{asset.exposure}</span>
-                  <div><strong>{asset.name}</strong><small>{asset.type} · {asset.location}</small><p>{asset.reason}</p></div>
+                  <div><strong>{asset.name}</strong><small>{asset.type} · {asset.location} · {asset.elevationM == null ? "elevation pending" : `${Math.round(asset.elevationM)} m USGS elevation`}</small><p>{asset.reason}</p></div>
                   <span className="criticality">{asset.criticality}</span>
                 </article>
               ))}
             </div>
-            <p className="fixture-note">Infrastructure is a clearly marked demonstration fixture in this build; weather observations and alerts refresh from NWS.</p>
+            <p className="fixture-note">Asset identities remain clearly marked demonstration fixtures. Their coordinates are mapped against live NWS GeoJSON warnings and USGS elevation samples.</p>
           </section>
 
           <section className="alert-panel">
@@ -381,7 +358,7 @@ export default function Home() {
                     <span>{alert.severity} · {alert.urgency}</span>
                     <strong>{alert.event}</strong>
                     <p>{alert.headline}</p>
-                    <small>Issued {formatTime(alert.sentAt)} CT{alert.expiresAt ? ` · expires ${formatTime(alert.expiresAt)} CT` : ""}</small>
+                    <small>{alert.geometry ? "Mapped NWS polygon" : "Area-based NWS alert"} · {alert.areaDescription} · issued {formatTime(alert.sentAt)} CT{alert.expiresAt ? ` · expires ${formatTime(alert.expiresAt)} CT` : ""}</small>
                   </article>
                 ))}
               </div>
