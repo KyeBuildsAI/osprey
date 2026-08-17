@@ -1,5 +1,6 @@
 export type FloodCategory = "NORMAL" | "ACTION" | "MINOR" | "MODERATE" | "MAJOR" | "UNKNOWN";
 export type WaterTrend = "RISING" | "FALLING" | "STEADY" | "UNKNOWN";
+export type ThresholdMetadataStatus = "LIVE" | "CACHED" | "PENDING";
 
 export interface FloodZoneGeometry {
   type: "Polygon" | "MultiPolygon";
@@ -45,6 +46,8 @@ export interface RiverGauge {
   forecastCategory: FloodCategory;
   percentToAction: number | null;
   impact: string | null;
+  thresholdMetadataStatus: ThresholdMetadataStatus;
+  thresholdMetadataUpdatedAt: string | null;
   source: "NOAA NWPS + USGS";
 }
 
@@ -68,6 +71,13 @@ export interface WaterIntelligence {
   floodZones: FloodZoneCollection;
   floodZoneStatus: "LIVE" | "UNAVAILABLE" | "DEMO";
   highestCategory: FloodCategory;
+  thresholdMetadata: {
+    live: number;
+    cached: number;
+    pending: number;
+    cacheTtlHours: 24;
+    pendingRetryMinutes: 15;
+  };
   fetchedAt: string;
   isLive: boolean;
   warnings: string[];
@@ -80,11 +90,11 @@ const COOPS_BASE = "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter";
 const FEMA_FLOOD_LAYER = "https://hazards.fema.gov/gis/nfhl/rest/services/public/NFHL/MapServer/28/query";
 
 const selectedGaugeCatalog = [
-  { lid: "BBST2", usgsId: "08074000", name: "Buffalo Bayou at Shepherd Drive", latitude: 29.76, longitude: -95.4083, action: 17, minor: 28, moderate: 29.5, major: 32 },
-  { lid: "HBMT2", usgsId: "08075000", name: "Brays Bayou at Houston", latitude: 29.6969, longitude: -95.4122, action: null, minor: null, moderate: null, major: null },
-  { lid: "HSIT2", usgsId: "08075500", name: "Sims Bayou at Houston", latitude: 29.674, longitude: -95.289, action: null, minor: null, moderate: null, major: null },
-  { lid: "HMMT2", usgsId: "08069500", name: "West Fork San Jacinto River near Humble", latitude: 30.026, longitude: -95.258, action: null, minor: null, moderate: null, major: null },
-  { lid: "HCCT2", usgsId: "08077600", name: "Clear Creek near Friendswood", latitude: 29.517, longitude: -95.179, action: null, minor: null, moderate: null, major: null },
+  { lid: "BBST2", usgsId: "08074000", name: "Buffalo Bayou at Shepherd Drive", latitude: 29.76, longitude: -95.4083, action: 17, minor: 28, moderate: 29.5, major: 32, verifiedAt: "2026-08-17T19:15:00.000Z" },
+  { lid: "HBMT2", usgsId: "08075000", name: "Brays Bayou at Houston", latitude: 29.6969, longitude: -95.4122, action: 38, minor: 41, moderate: 42, major: 43, verifiedAt: "2026-08-17T21:40:55.837Z" },
+  { lid: "HSIT2", usgsId: "08075500", name: "Sims Bayou at Houston", latitude: 29.674, longitude: -95.289, action: 23.2, minor: 26.2, moderate: 27.2, major: 28.2, verifiedAt: "2026-08-17T21:40:55.837Z" },
+  { lid: "HMMT2", usgsId: "08069500", name: "West Fork San Jacinto River near Humble", latitude: 30.026, longitude: -95.258, action: 45.3, minor: 49.3, moderate: 50.3, major: 52.3, verifiedAt: "2026-08-17T21:40:55.837Z" },
+  { lid: "HCCT2", usgsId: "08077600", name: "Clear Creek near Friendswood", latitude: 29.517, longitude: -95.179, action: 7, minor: 12, moderate: 16, major: 21, verifiedAt: "2026-08-17T21:40:55.837Z" },
 ];
 const selectedCoastalStations = [
   { id: "8771450", name: "Galveston Pier 21", latitude: 29.31, longitude: -94.793 },
@@ -99,6 +109,44 @@ const categoryRank: Record<FloodCategory, number> = {
   MODERATE: 4,
   MAJOR: 5,
 };
+
+const THRESHOLD_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const THRESHOLD_PENDING_RETRY_MS = 15 * 60 * 1000;
+
+interface ThresholdCacheEntry {
+  detail: unknown;
+  updatedAt: string;
+  expiresAt: number;
+}
+
+const thresholdMetadataCache = new Map<string, ThresholdCacheEntry>();
+const thresholdRetryAfter = new Map<string, number>();
+let thresholdRefreshPromise: Promise<Map<string, { detail: unknown; status: Exclude<ThresholdMetadataStatus, "PENDING">; updatedAt: string }>> | null = null;
+
+for (const gauge of selectedGaugeCatalog) {
+  if (!gauge.verifiedAt) continue;
+  thresholdMetadataCache.set(gauge.lid, {
+    detail: {
+      lid: gauge.lid,
+      usgsId: gauge.usgsId,
+      name: gauge.name,
+      latitude: gauge.latitude,
+      longitude: gauge.longitude,
+      status: { observed: {}, forecast: {} },
+      flood: {
+        stageUnits: "ft",
+        categories: {
+          action: { stage: gauge.action },
+          minor: { stage: gauge.minor },
+          moderate: { stage: gauge.moderate },
+          major: { stage: gauge.major },
+        },
+      },
+    },
+    updatedAt: gauge.verifiedAt,
+    expiresAt: Date.parse(gauge.verifiedAt) + THRESHOLD_CACHE_TTL_MS,
+  });
+}
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" ? value as Record<string, unknown> : {};
@@ -142,9 +190,50 @@ async function fetchJson(url: string, timeoutMs = 8500): Promise<unknown> {
   return response.json();
 }
 
+async function refreshGaugeDetails() {
+  const now = Date.now();
+  const dueGauges = selectedGaugeCatalog.filter((gauge) => {
+    const cached = thresholdMetadataCache.get(gauge.lid);
+    if (cached && cached.expiresAt > now) return false;
+    return (thresholdRetryAfter.get(gauge.lid) ?? 0) <= now;
+  });
+  const refreshed = new Set<string>();
+  if (dueGauges.length > 0) {
+    const results = await Promise.allSettled(dueGauges.map((gauge) => fetchJson(`${NWPS_BASE}/gauges/${gauge.lid}`, 6000)));
+    results.forEach((result, index) => {
+      const gauge = dueGauges[index];
+      if (result.status === "fulfilled") {
+        const updatedAt = new Date().toISOString();
+        thresholdMetadataCache.set(gauge.lid, {
+          detail: result.value,
+          updatedAt,
+          expiresAt: Date.now() + THRESHOLD_CACHE_TTL_MS,
+        });
+        thresholdRetryAfter.delete(gauge.lid);
+        refreshed.add(gauge.lid);
+      } else {
+        thresholdRetryAfter.set(gauge.lid, Date.now() + THRESHOLD_PENDING_RETRY_MS);
+      }
+    });
+  }
+
+  return new Map(selectedGaugeCatalog.flatMap((gauge) => {
+    const cached = thresholdMetadataCache.get(gauge.lid);
+    return cached ? [[gauge.lid, {
+      detail: cached.detail,
+      status: refreshed.has(gauge.lid) ? "LIVE" as const : "CACHED" as const,
+      updatedAt: cached.updatedAt,
+    }]] : [];
+  }));
+}
+
 async function fetchGaugeDetails() {
-  const results = await Promise.allSettled(selectedGaugeCatalog.map((gauge) => fetchJson(`${NWPS_BASE}/gauges/${gauge.lid}`, 6000)));
-  return results.flatMap((result) => result.status === "fulfilled" ? [result.value] : []);
+  if (!thresholdRefreshPromise) {
+    thresholdRefreshPromise = refreshGaugeDetails().finally(() => {
+      thresholdRefreshPromise = null;
+    });
+  }
+  return thresholdRefreshPromise;
 }
 
 async function fetchUsgsHistories(usgsIds: string[]) {
@@ -176,7 +265,12 @@ async function fetchUsgsHistories(usgsIds: string[]) {
   }));
 }
 
-function gaugeFrom(detailValue: unknown, histories: Map<string, { values: number[]; latestAt: string; quality: string }>): RiverGauge | null {
+function gaugeFrom(
+  detailValue: unknown,
+  histories: Map<string, { values: number[]; latestAt: string; quality: string }>,
+  thresholdMetadataStatus: ThresholdMetadataStatus,
+  thresholdMetadataUpdatedAt: string | null,
+): RiverGauge | null {
   const detail = asRecord(detailValue);
   const status = asRecord(detail.status);
   const observed = asRecord(status.observed);
@@ -201,7 +295,8 @@ function gaugeFrom(detailValue: unknown, histories: Map<string, { values: number
   const minorStage = categoryStage("minor");
   const moderateStage = categoryStage("moderate");
   const majorStage = categoryStage("major");
-  const derivedCategory: FloodCategory = observedValue == null
+  const hasThresholdMetadata = actionStage != null || minorStage != null || moderateStage != null || majorStage != null;
+  const derivedCategory: FloodCategory = observedValue == null || !hasThresholdMetadata
     ? "UNKNOWN"
     : majorStage != null && observedValue >= majorStage
       ? "MAJOR"
@@ -236,6 +331,8 @@ function gaugeFrom(detailValue: unknown, histories: Map<string, { values: number
       ? Math.max(0, Math.round((observedValue / actionStage) * 100))
       : null,
     impact: closestImpact ? textOr(closestImpact.statement) : null,
+    thresholdMetadataStatus,
+    thresholdMetadataUpdatedAt,
     source: "NOAA NWPS + USGS",
   };
 }
@@ -245,12 +342,14 @@ async function fetchRiverGauges(): Promise<RiverGauge[]> {
     fetchGaugeDetails(),
     fetchUsgsHistories(selectedGaugeCatalog.map((gauge) => gauge.usgsId)),
   ]);
-  const details = detailResult.status === "fulfilled" ? detailResult.value : [];
+  const details = detailResult.status === "fulfilled"
+    ? detailResult.value
+    : new Map<string, { detail: unknown; status: Exclude<ThresholdMetadataStatus, "PENDING">; updatedAt: string }>();
   const histories = historyResult.status === "fulfilled"
     ? historyResult.value
     : new Map<string, { values: number[]; latestAt: string; quality: string }>();
-  const detailByLid = new Map(details.map((detail) => [textOr(asRecord(detail).lid), detail]));
   return selectedGaugeCatalog.map((catalog) => {
+    const metadata = details.get(catalog.lid);
     const fallback = {
       lid: catalog.lid,
       usgsId: catalog.usgsId,
@@ -268,7 +367,12 @@ async function fetchRiverGauges(): Promise<RiverGauge[]> {
         },
       },
     };
-    return gaugeFrom(detailByLid.get(catalog.lid) ?? fallback, histories);
+    return gaugeFrom(
+      metadata?.detail ?? fallback,
+      histories,
+      metadata?.status ?? (catalog.verifiedAt ? "CACHED" : "PENDING"),
+      metadata?.updatedAt ?? catalog.verifiedAt,
+    );
   }).filter((gauge): gauge is RiverGauge => Boolean(gauge && gauge.observedValue != null));
 }
 
@@ -355,12 +459,20 @@ export async function fetchWaterIntelligence(): Promise<WaterIntelligence> {
   if (zoneResult.status === "rejected") warnings.push("FEMA flood-zone overlay temporarily unavailable");
   const categories = riverGauges.flatMap((gauge) => [gauge.category, gauge.forecastCategory]);
   const highestCategory = categories.sort((a, b) => categoryRank[b] - categoryRank[a])[0] ?? "UNKNOWN";
+  const thresholdMetadata = {
+    live: riverGauges.filter((gauge) => gauge.thresholdMetadataStatus === "LIVE").length,
+    cached: riverGauges.filter((gauge) => gauge.thresholdMetadataStatus === "CACHED").length,
+    pending: riverGauges.filter((gauge) => gauge.thresholdMetadataStatus === "PENDING").length,
+    cacheTtlHours: 24 as const,
+    pendingRetryMinutes: 15 as const,
+  };
   return {
     riverGauges,
     coastalStations,
     floodZones,
     floodZoneStatus: zoneResult.status === "fulfilled" ? "LIVE" : "UNAVAILABLE",
     highestCategory,
+    thresholdMetadata,
     fetchedAt,
     isLive: riverGauges.length > 0 || coastalStations.length > 0,
     warnings,
@@ -391,6 +503,8 @@ export const demoWaterIntelligence: WaterIntelligence = {
       forecastCategory: "UNKNOWN",
       percentToAction: 9,
       impact: "Flood impacts begin above published action and flood stages.",
+      thresholdMetadataStatus: "CACHED",
+      thresholdMetadataUpdatedAt: "2026-08-17T19:15:00.000Z",
       source: "NOAA NWPS + USGS",
     },
   ],
@@ -412,6 +526,7 @@ export const demoWaterIntelligence: WaterIntelligence = {
   floodZones: { type: "FeatureCollection", features: [] },
   floodZoneStatus: "DEMO",
   highestCategory: "NORMAL",
+  thresholdMetadata: { live: 0, cached: 1, pending: 0, cacheTtlHours: 24, pendingRetryMinutes: 15 },
   fetchedAt: "2026-08-17T16:01:00.000Z",
   isLive: false,
   warnings: [],

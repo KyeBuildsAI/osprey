@@ -271,14 +271,25 @@ export default function Home() {
             <span className={`water-health ${water.warnings.length === 0 ? "water-health-live" : "water-health-partial"}`}><i />{water.warnings.length === 0 ? "ALL SOURCES REPORTING" : `${water.warnings.length} SOURCE NOTICE${water.warnings.length === 1 ? "" : "S"}`}</span>
           </div>
           {water.warnings.length > 0 && <div className="water-notices">{water.warnings.map((warning) => <span key={warning}>{warning}</span>)}</div>}
+          <div className="threshold-cache-note">
+            <span><i />EXPECTED METADATA LAG</span>
+            <div>
+              <strong>Live river levels and NOAA thresholds update on different clocks.</strong>
+              <p>USGS level readings and trends remain live. NOAA action and flood-stage metadata changes slowly, so Osprey caches verified values for 24 hours. “Threshold metadata pending” means the live level is available while Osprey waits for NOAA metadata; it does not mean the gauge has no threshold.</p>
+            </div>
+            <small>{water.thresholdMetadata.live} live · {water.thresholdMetadata.cached} cached · {water.thresholdMetadata.pending} pending<br />Pending metadata retries every {water.thresholdMetadata.pendingRetryMinutes} minutes.</small>
+          </div>
           <div className="water-station-grid">
             {water.riverGauges.map((gauge) => (
               <article className="water-station-card" key={gauge.id}>
-                <header><span>{gauge.id} · RIVER GAUGE</span><b className={`flood-${gauge.category.toLowerCase()}`}>{gauge.category}</b></header>
+                <header><span>{gauge.id} · RIVER GAUGE</span><b className={`flood-${gauge.category.toLowerCase()}`}>{gauge.thresholdMetadataStatus === "PENDING" ? "LEVEL LIVE" : gauge.category}</b></header>
                 <h3>{gauge.name}</h3>
                 <div className="water-reading"><strong>{gauge.observedValue ?? "—"}</strong><span>{gauge.observedUnit}<small>{gauge.trend} {gauge.changeSixHours == null ? "" : `· ${gauge.changeSixHours >= 0 ? "+" : ""}${gauge.changeSixHours} ${gauge.observedUnit} / 6h`}</small></span></div>
-                <div className="threshold-track"><i style={{ width: `${Math.min(gauge.percentToAction ?? 0, 100)}%` }} /></div>
-                <footer><span>{gauge.actionStage == null ? "Action stage unavailable" : `${gauge.percentToAction ?? "—"}% of ${gauge.actionStage} ${gauge.observedUnit} action stage`}</span><small>{gauge.usgsId ? `USGS ${gauge.usgsId}` : "NWPS"} · {formatTime(gauge.observedAt)} CT</small></footer>
+                <div className={`threshold-track ${gauge.thresholdMetadataStatus === "PENDING" ? "threshold-track-pending" : ""}`}><i style={{ width: `${Math.min(gauge.percentToAction ?? 0, 100)}%` }} /></div>
+                <footer>
+                  <span className={gauge.thresholdMetadataStatus === "PENDING" ? "threshold-pending-label" : ""}>{gauge.thresholdMetadataStatus === "PENDING" ? "Threshold metadata pending" : gauge.actionStage == null ? "No NOAA action stage published" : `${gauge.percentToAction ?? "—"}% of ${gauge.actionStage} ${gauge.observedUnit} action stage`}</span>
+                  <small>{gauge.usgsId ? `USGS ${gauge.usgsId}` : "NWPS"} level · {formatTime(gauge.observedAt)} CT<br />{gauge.thresholdMetadataStatus === "PENDING" ? `NOAA metadata retry within ${water.thresholdMetadata.pendingRetryMinutes} min` : `${gauge.thresholdMetadataStatus} NOAA metadata${gauge.thresholdMetadataUpdatedAt ? ` · ${formatTime(gauge.thresholdMetadataUpdatedAt)} CT` : ""}`}</small>
+                </footer>
               </article>
             ))}
             {water.coastalStations.map((station) => (
@@ -291,7 +302,7 @@ export default function Home() {
               </article>
             ))}
           </div>
-          <p className="water-boundary">Operational awareness only. Gauge observations can be provisional; FEMA flood zones describe mapped hazard, not current inundation. Representative assets remain demonstration records until an authoritative asset registry is connected.</p>
+          <p className="water-boundary">Operational awareness only. Gauge observations can be provisional; cached thresholds may intentionally lag live levels by up to 24 hours because they are slowly changing reference metadata. FEMA flood zones describe mapped hazard, not current inundation. Representative assets remain demonstration records until an authoritative asset registry is connected.</p>
         </section>
 
         <section className="agent-section" id="agents">
