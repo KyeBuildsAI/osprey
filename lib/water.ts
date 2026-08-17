@@ -317,7 +317,9 @@ function gaugeFrom(
     observedUnit: textOr(observed.primaryUnit, textOr(flood.stageUnits, "ft")),
     observedAt: history?.latestAt ?? textOr(observed.validTime, new Date().toISOString()),
     quality: history?.quality ?? "NWPS provisional",
-    category: normalizeCategory(observed.floodCategory) === "UNKNOWN" ? derivedCategory : normalizeCategory(observed.floodCategory),
+    // A current USGS stage always wins. NOAA's observed category can be older
+    // than the live reading because threshold metadata is intentionally cached.
+    category: observedValue == null ? normalizeCategory(observed.floodCategory) : derivedCategory,
     trend: trend.trend,
     changeSixHours: trend.change,
     actionStage,

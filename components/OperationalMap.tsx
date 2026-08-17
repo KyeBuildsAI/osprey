@@ -123,6 +123,18 @@ function assetCollection(assets: InfrastructureAsset[]): FeatureCollection<Point
   };
 }
 
+function nextGaugeThreshold(gauge: WaterIntelligence["riverGauges"][number]) {
+  if (gauge.observedValue == null) return null;
+  const stages = [
+    ["Action", gauge.actionStage],
+    ["Minor", gauge.minorStage],
+    ["Moderate", gauge.moderateStage],
+    ["Major", gauge.majorStage],
+  ] as const;
+  const next = stages.find(([, value]) => value != null && gauge.observedValue! < value);
+  return next ? `Next ${next[0].toLowerCase()} at ${next[1]} ${gauge.observedUnit}` : null;
+}
+
 function waterStationCollection(water: WaterIntelligence): FeatureCollection<Point> {
   return {
     type: "FeatureCollection",
@@ -143,7 +155,7 @@ function waterStationCollection(water: WaterIntelligence): FeatureCollection<Poi
             ? "Threshold Metadata pending · live level unaffected"
             : gauge.actionStage == null
               ? "No NOAA action stage published"
-              : `${gauge.percentToAction ?? "—"}% of ${gauge.actionStage} ${gauge.observedUnit} action stage · ${gauge.thresholdMetadataStatus.toLowerCase()} metadata`,
+              : `${gauge.percentToAction ?? "—"}% of ${gauge.actionStage} ${gauge.observedUnit} action stage${nextGaugeThreshold(gauge) ? ` · ${nextGaugeThreshold(gauge)}` : ""} · ${gauge.thresholdMetadataStatus.toLowerCase()} metadata`,
           sourceName: gauge.source,
         },
       })),

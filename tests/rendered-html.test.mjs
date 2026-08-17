@@ -36,6 +36,12 @@ test("server-renders the Houston–Galveston incident room", async () => {
   assert.match(html, /EXPECTED METADATA LAG/);
   assert.match(html, /Threshold Metadata pending/);
   assert.match(html, /caches verified values for 24 hours/);
+  assert.match(html, /NOAA STAGE LADDER/);
+  assert.match(html, /Readiness; flooding not implied/);
+  assert.match(html, /Initial limited impacts/);
+  assert.match(html, /Significant wider impacts/);
+  assert.match(html, /Serious extensive impacts/);
+  assert.match(html, /Next: Action at 17 ft/);
   assert.match(html, /INFRASTRUCTURE IDENTIFY/);
   assert.match(html, /Click the map to inspect/);
   assert.match(html, /VISIBLE CONTEXT/);

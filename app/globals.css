@@ -112,7 +112,7 @@ button { cursor: pointer; }
 .threshold-cache-note strong { display: block; font: 500 15px Georgia, serif; }
 .threshold-cache-note p { margin: 5px 0 0; color: #61776f; font-size: 10px; line-height: 1.5; }
 .threshold-cache-note > small { padding-left: 16px; color: #688078; border-left: 1px solid #c9d9d3; font: 8px/1.7 var(--font-geist-mono); }
-.water-station-grid { margin-top: 15px; display: grid; grid-template-columns: repeat(auto-fit,minmax(230px,1fr)); border-top: 1px solid var(--line); border-left: 1px solid var(--line); background: #fff; box-shadow: 0 9px 30px rgba(31,49,42,.04); }
+.water-station-grid { margin-top: 15px; display: grid; grid-template-columns: repeat(auto-fit,minmax(270px,1fr)); border-top: 1px solid var(--line); border-left: 1px solid var(--line); background: #fff; box-shadow: 0 9px 30px rgba(31,49,42,.04); }
 .water-station-card { min-width: 0; min-height: 250px; padding: 17px; display: flex; flex-direction: column; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 .water-station-card header { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .water-station-card header > span { color: #70827b; font: 8px var(--font-geist-mono); letter-spacing: .08em; }
@@ -128,6 +128,26 @@ button { cursor: pointer; }
 .threshold-track i { height: 100%; display: block; background: linear-gradient(90deg,#3f9072,#d9a33f); }
 .threshold-track-pending { background: repeating-linear-gradient(90deg,#d7dfdb 0 7px,transparent 7px 12px); }
 .threshold-pending-label { color: #946517 !important; font-weight: 720; }
+.flood-stage-ladder { margin-top: 13px; border: 1px solid #dfe6e2; background: #fbfcfb; }
+.flood-stage-ladder-heading { padding: 8px 9px; border-bottom: 1px solid #dfe6e2; }
+.flood-stage-ladder-heading span, .flood-stage-ladder-heading strong { display: block; }
+.flood-stage-ladder-heading span { color: #73847e; font: 7px var(--font-geist-mono); letter-spacing: .11em; }
+.flood-stage-ladder-heading strong { margin-top: 4px; color: #3d5e53; font-size: 9px; font-weight: 700; }
+.flood-stage-step { min-height: 37px; padding: 6px 8px; display: grid; grid-template-columns: 72px 55px minmax(0,1fr); gap: 7px; align-items: center; border-bottom: 1px solid #edf0ee; }
+.flood-stage-step:last-child { border-bottom: 0; }
+.flood-stage-step > span { color: #64766f; font-size: 8px; font-weight: 750; letter-spacing: .05em; text-transform: uppercase; }
+.flood-stage-step > span i { width: 6px; height: 6px; margin-right: 6px; display: inline-block; border-radius: 50%; background: #c8d0cc; }
+.flood-stage-step > strong { color: #334f46; font: 500 11px Georgia, serif; }
+.flood-stage-step > small { color: #7b8984; font-size: 7px; line-height: 1.25; }
+.flood-stage-step.stage-action > span i { background: #edb84d; }
+.flood-stage-step.stage-minor > span i { background: #df8e36; }
+.flood-stage-step.stage-moderate > span i { background: #ce5534; }
+.flood-stage-step.stage-major > span i { background: #9f2929; }
+.flood-stage-step.stage-current { background: #fff5df; box-shadow: inset 3px 0 #d9a33f; }
+.flood-stage-step.stage-current.stage-minor { background: #fff0e3; box-shadow: inset 3px 0 #df8e36; }
+.flood-stage-step.stage-current.stage-moderate { background: #fceae4; box-shadow: inset 3px 0 #ce5534; }
+.flood-stage-step.stage-current.stage-major { background: #f7e2e2; box-shadow: inset 3px 0 #9f2929; }
+.flood-stage-step.stage-crossed { opacity: .62; }
 .water-station-card footer { margin-top: auto; padding-top: 14px; }
 .water-station-card footer span, .water-station-card footer small { display: block; }
 .water-station-card footer span { color: #536a61; font-size: 9px; }

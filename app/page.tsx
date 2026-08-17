@@ -9,6 +9,7 @@ import {
   type IncidentIntelligence,
   type RiskLevel,
 } from "@/lib/intelligence";
+import type { FloodCategory, RiverGauge } from "@/lib/water";
 
 const agentOrder: AgentId[] = ["weather", "infrastructure", "operations", "communications"];
 
@@ -37,6 +38,44 @@ const agentNumbers: Record<AgentId, string> = {
   operations: "03",
   communications: "04",
 };
+
+const floodStageGuidance: Array<{
+  category: Exclude<FloodCategory, "NORMAL" | "UNKNOWN">;
+  stage: "actionStage" | "minorStage" | "moderateStage" | "majorStage";
+  label: string;
+  meaning: string;
+}> = [
+  { category: "ACTION", stage: "actionStage", label: "Action", meaning: "Readiness; flooding not implied" },
+  { category: "MINOR", stage: "minorStage", label: "Minor", meaning: "Initial limited impacts" },
+  { category: "MODERATE", stage: "moderateStage", label: "Moderate", meaning: "Significant wider impacts" },
+  { category: "MAJOR", stage: "majorStage", label: "Major", meaning: "Serious extensive impacts" },
+];
+
+const floodStageRank: Record<FloodCategory, number> = {
+  UNKNOWN: -1,
+  NORMAL: 0,
+  ACTION: 1,
+  MINOR: 2,
+  MODERATE: 3,
+  MAJOR: 4,
+};
+
+function conciseNumber(value: number) {
+  return Number(value.toFixed(2)).toString();
+}
+
+function nextStageSummary(gauge: RiverGauge) {
+  if (gauge.observedValue == null) return "Live level unavailable";
+  const next = floodStageGuidance.find(({ stage }) => gauge[stage] != null && gauge.observedValue! < gauge[stage]!);
+  if (next) {
+    const value = gauge[next.stage]!;
+    return `Next: ${next.label} at ${value} ${gauge.observedUnit} · ${conciseNumber(value - gauge.observedValue)} ${gauge.observedUnit} to go`;
+  }
+  if (gauge.majorStage != null && gauge.observedValue >= gauge.majorStage) {
+    return `Major threshold exceeded by ${conciseNumber(gauge.observedValue - gauge.majorStage)} ${gauge.observedUnit}`;
+  }
+  return "No higher published threshold";
+}
 
 function formatTime(value: string, includeDate = false) {
   return new Intl.DateTimeFormat("en-GB", {
@@ -286,6 +325,27 @@ export default function Home() {
                 <h3>{gauge.name}</h3>
                 <div className="water-reading"><strong>{gauge.observedValue ?? "—"}</strong><span>{gauge.observedUnit}<small>{gauge.trend} {gauge.changeSixHours == null ? "" : `· ${gauge.changeSixHours >= 0 ? "+" : ""}${gauge.changeSixHours} ${gauge.observedUnit} / 6h`}</small></span></div>
                 <div className={`threshold-track ${gauge.thresholdMetadataStatus === "PENDING" ? "threshold-track-pending" : ""}`}><i style={{ width: `${Math.min(gauge.percentToAction ?? 0, 100)}%` }} /></div>
+                {gauge.thresholdMetadataStatus !== "PENDING" && floodStageGuidance.some(({ stage }) => gauge[stage] != null) && (
+                  <div className="flood-stage-ladder" aria-label={`Published flood stages for ${gauge.name}`}>
+                    <div className="flood-stage-ladder-heading"><span>NOAA STAGE LADDER</span><strong>{nextStageSummary(gauge)}</strong></div>
+                    {floodStageGuidance.map((stage, index) => {
+                      const value = gauge[stage.stage];
+                      if (value == null) return null;
+                      const state = gauge.category === stage.category
+                        ? "stage-current"
+                        : floodStageRank[gauge.category] > index
+                          ? "stage-crossed"
+                          : "stage-upcoming";
+                      return (
+                        <div className={`flood-stage-step stage-${stage.category.toLowerCase()} ${state}`} key={stage.category} aria-current={state === "stage-current" ? "step" : undefined}>
+                          <span><i />{stage.label}</span>
+                          <strong>{value} {gauge.observedUnit}</strong>
+                          <small>{stage.meaning}</small>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
                 <footer>
                   <span className={gauge.thresholdMetadataStatus === "PENDING" ? "threshold-pending-label" : ""}>{gauge.thresholdMetadataStatus === "PENDING" ? "Threshold Metadata pending" : gauge.actionStage == null ? "No NOAA action stage published" : `${gauge.percentToAction ?? "—"}% of ${gauge.actionStage} ${gauge.observedUnit} action stage`}</span>
                   <small>{gauge.usgsId ? `USGS ${gauge.usgsId}` : "NWPS"} level · {formatTime(gauge.observedAt)} CT<br />{gauge.thresholdMetadataStatus === "PENDING" ? `NOAA metadata retry within ${water.thresholdMetadata.pendingRetryMinutes} min` : `${gauge.thresholdMetadataStatus} NOAA metadata${gauge.thresholdMetadataUpdatedAt ? ` · ${formatTime(gauge.thresholdMetadataUpdatedAt)} CT` : ""}`}</small>
