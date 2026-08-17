@@ -12,7 +12,7 @@ import {
 import mapLibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import type { Feature, FeatureCollection, GeoJsonObject, Geometry, Point, Polygon } from "geojson";
 import type { AlertGeometry, InfrastructureAsset, WeatherAlert } from "@/lib/intelligence";
-import type { WaterIntelligence } from "@/lib/water";
+import type { WaterIntelligence } from "@/lib/water-types";
 
 type MapLayer = "Risk" | "Impact" | "Assets";
 type ExposureQuery = "Radius" | "Polygon" | "Assets";
@@ -571,7 +571,7 @@ export function OperationalMap({
         <div className="exposure-result">
           <span>LIVE SPATIAL RESULT</span>
           <strong>{resultTitle}</strong>
-          <small>{geospatialAlerts.length === 0 ? "No active NWS warning polygons" : `${geospatialAlerts.length} NWS warning polygons`} · {warningExposures.length} asset intersections · {water.riverGauges.length + water.coastalStations.length} water stations · {water.floodZones.features.length} flood-zone features · {elevationSamples}/{assets.length} USGS elevations</small>
+          <small>{geospatialAlerts.length === 0 ? "No active NWS warning polygons" : `${geospatialAlerts.length} NWS warning polygons`} · {warningExposures.length} asset intersections · {water.riverGauges.length + water.coastalStations.length} water stations · {water.floodZones.features.length} flood-zone features ({water.floodZoneStatus.toLowerCase()}) · {elevationSamples}/{assets.length} USGS elevations</small>
         </div>
         <div className="map-legend"><span><i className="legend-high" />NWS warning</span><span><i className="legend-water" />Flood zone</span><span><i className="legend-normal" />Water station</span><span><i className="legend-terrain" />Terrain</span></div>
       </div>

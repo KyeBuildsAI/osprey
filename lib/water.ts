@@ -1,93 +1,28 @@
-export type FloodCategory = "NORMAL" | "ACTION" | "MINOR" | "MODERATE" | "MAJOR" | "UNKNOWN";
-export type WaterTrend = "RISING" | "FALLING" | "STEADY" | "UNKNOWN";
-export type ThresholdMetadataStatus = "LIVE" | "CACHED" | "PENDING";
+import { FEMA_REFRESH_INTERVAL_DAYS, getFemaSnapshot } from "@/lib/fema";
+import type {
+  CoastalStation,
+  FloodCategory,
+  RiverGauge,
+  ThresholdMetadataStatus,
+  WaterIntelligence,
+  WaterTrend,
+} from "@/lib/water-types";
 
-export interface FloodZoneGeometry {
-  type: "Polygon" | "MultiPolygon";
-  coordinates: number[][][] | number[][][][];
-}
-
-export interface FloodZoneFeature {
-  type: "Feature";
-  id?: string | number;
-  geometry: FloodZoneGeometry;
-  properties: {
-    FLD_ZONE?: string;
-    ZONE_SUBTY?: string;
-    SFHA_TF?: string;
-    [key: string]: unknown;
-  };
-}
-
-export interface FloodZoneCollection {
-  type: "FeatureCollection";
-  features: FloodZoneFeature[];
-}
-
-export interface RiverGauge {
-  id: string;
-  usgsId: string | null;
-  name: string;
-  latitude: number;
-  longitude: number;
-  observedValue: number | null;
-  observedUnit: string;
-  observedAt: string;
-  quality: string;
-  category: FloodCategory;
-  trend: WaterTrend;
-  changeSixHours: number | null;
-  actionStage: number | null;
-  minorStage: number | null;
-  moderateStage: number | null;
-  majorStage: number | null;
-  forecastValue: number | null;
-  forecastAt: string | null;
-  forecastCategory: FloodCategory;
-  percentToAction: number | null;
-  impact: string | null;
-  thresholdMetadataStatus: ThresholdMetadataStatus;
-  thresholdMetadataUpdatedAt: string | null;
-  source: "NOAA NWPS + USGS";
-}
-
-export interface CoastalStation {
-  id: string;
-  name: string;
-  latitude: number;
-  longitude: number;
-  observedM: number | null;
-  predictedM: number | null;
-  anomalyM: number | null;
-  observedAt: string;
-  quality: string;
-  trend: WaterTrend;
-  source: "NOAA CO-OPS";
-}
-
-export interface WaterIntelligence {
-  riverGauges: RiverGauge[];
-  coastalStations: CoastalStation[];
-  floodZones: FloodZoneCollection;
-  floodZoneStatus: "LIVE" | "UNAVAILABLE" | "DEMO";
-  highestCategory: FloodCategory;
-  thresholdMetadata: {
-    live: number;
-    cached: number;
-    pending: number;
-    cacheTtlHours: 24;
-    pendingRetryMinutes: 15;
-  };
-  fetchedAt: string;
-  isLive: boolean;
-  warnings: string[];
-}
+export type {
+  CoastalStation,
+  FloodCategory,
+  FloodZoneCollection,
+  FloodZoneFeature,
+  RiverGauge,
+  ThresholdMetadataStatus,
+  WaterIntelligence,
+  WaterTrend,
+} from "@/lib/water-types";
 
 const NWPS_BASE = "https://api.water.noaa.gov/nwps/v1";
 const USGS_BASE = "https://api.waterdata.usgs.gov/ogcapi/v0/collections/continuous/items";
 const USGS_LATEST_BASE = "https://api.waterdata.usgs.gov/ogcapi/v0/collections/latest-continuous/items";
 const COOPS_BASE = "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter";
-const FEMA_FLOOD_LAYER = "https://hazards.fema.gov/gis/nfhl/rest/services/public/NFHL/MapServer/28/query";
 
 const selectedGaugeCatalog = [
   { lid: "BBST2", usgsId: "08074000", name: "Buffalo Bayou at Shepherd Drive", latitude: 29.76, longitude: -95.4083, action: 17, minor: 28, moderate: 29.5, major: 32, verifiedAt: "2026-08-17T19:15:00.000Z" },
@@ -420,45 +355,21 @@ async function fetchCoastalStations() {
   return results.flatMap((result) => result.status === "fulfilled" ? [result.value] : []);
 }
 
-async function fetchFloodZones(): Promise<FloodZoneCollection> {
-  const parameters = new URLSearchParams({
-    where: "SFHA_TF='T'",
-    geometry: "-95.91,28.98,-94.55,30.15",
-    geometryType: "esriGeometryEnvelope",
-    inSR: "4326",
-    outSR: "4326",
-    outFields: "FLD_ZONE,ZONE_SUBTY,SFHA_TF",
-    returnGeometry: "true",
-    maxAllowableOffset: "0.003",
-    geometryPrecision: "4",
-    resultRecordCount: "500",
-    f: "geojson",
-  });
-  const payload = asRecord(await fetchJson(`${FEMA_FLOOD_LAYER}?${parameters}`, 7000));
-  const features = Array.isArray(payload.features) ? payload.features : [];
-  return {
-    type: "FeatureCollection",
-    features: features.filter((feature): feature is FloodZoneFeature => {
-      const geometry = asRecord(asRecord(feature).geometry);
-      return geometry.type === "Polygon" || geometry.type === "MultiPolygon";
-    }),
-  };
-}
-
 export async function fetchWaterIntelligence(): Promise<WaterIntelligence> {
   const fetchedAt = new Date().toISOString();
   const [riverResult, coastalResult, zoneResult] = await Promise.allSettled([
     fetchRiverGauges(),
     fetchCoastalStations(),
-    fetchFloodZones(),
+    getFemaSnapshot(),
   ]);
   const riverGauges = riverResult.status === "fulfilled" ? riverResult.value : [];
   const coastalStations = coastalResult.status === "fulfilled" ? coastalResult.value : [];
-  const floodZones = zoneResult.status === "fulfilled" ? zoneResult.value : { type: "FeatureCollection" as const, features: [] };
+  const floodZones = zoneResult.status === "fulfilled" ? zoneResult.value.collection : { type: "FeatureCollection" as const, features: [] };
   const warnings: string[] = [];
   if (riverGauges.length === 0) warnings.push("River gauge feed temporarily unavailable");
   if (coastalStations.length === 0) warnings.push("Coastal water-level feed temporarily unavailable");
-  if (zoneResult.status === "rejected") warnings.push("FEMA flood-zone overlay temporarily unavailable");
+  if (zoneResult.status === "rejected") warnings.push("Verified FEMA flood-zone snapshot unavailable");
+  if (zoneResult.status === "fulfilled" && zoneResult.value.refresh.lastOutcome === "FAILURE") warnings.push("FEMA update pending; last verified flood-zone snapshot retained");
   const categories = riverGauges.flatMap((gauge) => [gauge.category, gauge.forecastCategory]);
   const highestCategory = categories.sort((a, b) => categoryRank[b] - categoryRank[a])[0] ?? "UNKNOWN";
   const thresholdMetadata = {
@@ -472,7 +383,32 @@ export async function fetchWaterIntelligence(): Promise<WaterIntelligence> {
     riverGauges,
     coastalStations,
     floodZones,
-    floodZoneStatus: zoneResult.status === "fulfilled" ? "LIVE" : "UNAVAILABLE",
+    floodZoneStatus: zoneResult.status === "rejected"
+      ? "UNAVAILABLE"
+      : zoneResult.value.refresh.lastOutcome === "FAILURE"
+        ? "PENDING"
+        : zoneResult.value.source.kind === "FEMA_OFFICIAL"
+          ? "LIVE"
+          : "CACHED",
+    floodZoneMetadata: zoneResult.status === "fulfilled" ? {
+      publisher: zoneResult.value.source.publisher,
+      dataset: zoneResult.value.source.dataset,
+      coverage: zoneResult.value.source.coverage,
+      dataUpdatedAt: zoneResult.value.source.dataUpdatedAt,
+      verifiedAt: zoneResult.value.source.verifiedAt,
+      lastRefreshAttemptAt: zoneResult.value.refresh.lastAttemptAt,
+      refreshIntervalDays: FEMA_REFRESH_INTERVAL_DAYS,
+      sourceKind: zoneResult.value.source.kind,
+    } : {
+      publisher: "FEMA National Flood Hazard Layer",
+      dataset: "Flood Hazard Zones",
+      coverage: "Houston–Galveston operating area · Special Flood Hazard Areas",
+      dataUpdatedAt: null,
+      verifiedAt: null,
+      lastRefreshAttemptAt: null,
+      refreshIntervalDays: FEMA_REFRESH_INTERVAL_DAYS,
+      sourceKind: "NONE",
+    },
     highestCategory,
     thresholdMetadata,
     fetchedAt,
@@ -480,56 +416,3 @@ export async function fetchWaterIntelligence(): Promise<WaterIntelligence> {
     warnings,
   };
 }
-
-export const demoWaterIntelligence: WaterIntelligence = {
-  riverGauges: [
-    {
-      id: "BBST2",
-      usgsId: "08074000",
-      name: "Buffalo Bayou at Houston",
-      latitude: 29.761,
-      longitude: -95.409,
-      observedValue: 1.45,
-      observedUnit: "ft",
-      observedAt: "2026-08-17T16:00:00.000Z",
-      quality: "Representative preview",
-      category: "NORMAL",
-      trend: "STEADY",
-      changeSixHours: 0.02,
-      actionStage: 17,
-      minorStage: 28,
-      moderateStage: 29.5,
-      majorStage: 32,
-      forecastValue: null,
-      forecastAt: null,
-      forecastCategory: "UNKNOWN",
-      percentToAction: 9,
-      impact: "Flood impacts begin above published action and flood stages.",
-      thresholdMetadataStatus: "CACHED",
-      thresholdMetadataUpdatedAt: "2026-08-17T19:15:00.000Z",
-      source: "NOAA NWPS + USGS",
-    },
-  ],
-  coastalStations: [
-    {
-      id: "8771450",
-      name: "Galveston Pier 21",
-      latitude: 29.31,
-      longitude: -94.793,
-      observedM: 0.14,
-      predictedM: 0.11,
-      anomalyM: 0.03,
-      observedAt: "2026-08-17T16:00:00.000Z",
-      quality: "Representative preview",
-      trend: "RISING",
-      source: "NOAA CO-OPS",
-    },
-  ],
-  floodZones: { type: "FeatureCollection", features: [] },
-  floodZoneStatus: "DEMO",
-  highestCategory: "NORMAL",
-  thresholdMetadata: { live: 0, cached: 1, pending: 0, cacheTtlHours: 24, pendingRetryMinutes: 15 },
-  fetchedAt: "2026-08-17T16:01:00.000Z",
-  isLive: false,
-  warnings: [],
-};

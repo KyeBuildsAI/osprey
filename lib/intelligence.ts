@@ -1,4 +1,4 @@
-import { demoWaterIntelligence, type FloodCategory, type WaterIntelligence } from "@/lib/water";
+import { demoWaterIntelligence, type FloodCategory, type WaterIntelligence } from "@/lib/water-types";
 
 export type RiskLevel = "LOW" | "MODERATE" | "HIGH" | "SEVERE";
 export type AgentId = "weather" | "infrastructure" | "operations" | "communications";
@@ -218,11 +218,11 @@ function waterEvidenceFor(water: WaterIntelligence): EvidenceReference[] {
   evidence.push({
     id: "FEMA-NFHL-001",
     label: "Special Flood Hazard Area overlay",
-    value: water.floodZoneStatus === "LIVE"
-      ? `${water.floodZones.features.length} FEMA NFHL features loaded in the operating area`
-      : "FEMA NFHL overlay unavailable; river and coastal observations remain live",
-    source: "FEMA National Flood Hazard Layer",
-    observedAt: water.fetchedAt,
+    value: water.floodZones.features.length > 0
+      ? `${water.floodZones.features.length} FEMA NFHL features loaded · ${water.floodZoneStatus.toLowerCase()} reference status`
+      : "Verified FEMA NFHL snapshot unavailable; river and coastal observations remain live",
+    source: `FEMA National Flood Hazard Layer · ${water.floodZoneMetadata.publisher}`,
+    observedAt: water.floodZoneMetadata.verifiedAt ?? water.fetchedAt,
   });
   return evidence;
 }

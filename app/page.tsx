@@ -9,7 +9,7 @@ import {
   type IncidentIntelligence,
   type RiskLevel,
 } from "@/lib/intelligence";
-import type { FloodCategory, RiverGauge } from "@/lib/water";
+import type { FloodCategory, RiverGauge } from "@/lib/water-types";
 
 const agentOrder: AgentId[] = ["weather", "infrastructure", "operations", "communications"];
 
@@ -92,6 +92,14 @@ function riskClass(risk: RiskLevel) {
   return `risk-${risk.toLowerCase()}`;
 }
 
+function floodZoneStatusLabel(status: IncidentIntelligence["water"]["floodZoneStatus"]) {
+  if (status === "LIVE") return "LIVE FEMA";
+  if (status === "CACHED") return "VERIFIED SNAPSHOT";
+  if (status === "PENDING") return "UPDATE PENDING";
+  if (status === "DEMO") return "CONNECTING";
+  return status;
+}
+
 function AssessmentCard({ assessment, active, onOpen }: { assessment: AgentAssessment; active: boolean; onOpen: () => void }) {
   return (
     <article className={`assessment-card ${active ? "assessment-active" : ""}`}>
@@ -144,12 +152,29 @@ export default function Home() {
     }
   }, []);
 
+  const refreshFemaInBackground = useCallback(async () => {
+    try {
+      const response = await fetch("/api/fema-refresh", { method: "POST", cache: "no-store" });
+      if (!response.ok) return;
+      const result = await response.json() as { updated?: boolean; outcome?: "SUCCESS" | "FAILURE" };
+      if (result.updated || result.outcome === "FAILURE") await refreshIntelligence();
+    } catch {
+      // The verified snapshot already displayed is intentionally retained.
+    }
+  }, [refreshIntelligence]);
+
   useEffect(() => {
     const initialRefresh = window.setTimeout(() => {
       void refreshIntelligence();
     }, 0);
-    return () => window.clearTimeout(initialRefresh);
-  }, [refreshIntelligence]);
+    const femaRefresh = window.setTimeout(() => {
+      void refreshFemaInBackground();
+    }, 1800);
+    return () => {
+      window.clearTimeout(initialRefresh);
+      window.clearTimeout(femaRefresh);
+    };
+  }, [refreshFemaInBackground, refreshIntelligence]);
 
   const { incident, weather, water, assessments, assets, timeline } = intelligence;
   const activeAssessment = assessments[openAgent];
@@ -247,7 +272,7 @@ export default function Home() {
           <div><span>RIVER GAUGES</span><strong>{water.riverGauges.length}</strong><small>Highest: {water.highestCategory}</small></div>
           <div><span>LEAD GAUGE</span><strong>{leadGauge?.observedValue ?? "—"} {leadGauge?.observedUnit ?? ""}</strong><small>{leadGauge ? `${leadGauge.name} · ${leadGauge.trend}` : "Awaiting feed"}</small></div>
           <div><span>COASTAL LEVEL</span><strong>{leadCoast?.observedM ?? "—"} m</strong><small>{leadCoast?.anomalyM == null ? "Awaiting tide comparison" : `${leadCoast.anomalyM >= 0 ? "+" : ""}${leadCoast.anomalyM} m vs predicted`}</small></div>
-          <div><span>FLOOD ZONES</span><strong>{water.floodZoneStatus}</strong><small>{water.floodZoneStatus === "LIVE" ? `${water.floodZones.features.length} mapped features` : "Gauge feeds unaffected"}</small></div>
+          <div><span>FLOOD ZONES</span><strong>{floodZoneStatusLabel(water.floodZoneStatus)}</strong><small>{water.floodZones.features.length > 0 ? `${water.floodZones.features.length} mapped features` : "Gauge feeds unaffected"}</small></div>
         </section>
 
         <section className="shared-state" aria-label="Shared incident state flow">
@@ -318,6 +343,24 @@ export default function Home() {
             </div>
             <small>{water.thresholdMetadata.live} live · {water.thresholdMetadata.cached} cached · {water.thresholdMetadata.pending} pending<br />Pending metadata retries every {water.thresholdMetadata.pendingRetryMinutes} minutes.</small>
           </div>
+          <div className={`fema-freshness-note fema-status-${water.floodZoneStatus.toLowerCase()}`}>
+            <span><i />FLOOD-ZONE REFERENCE</span>
+            <div>
+              <strong>{floodZoneStatusLabel(water.floodZoneStatus)}</strong>
+              <p>{water.floodZoneStatus === "PENDING"
+                ? "The latest refresh could not complete. Osprey is retaining the last complete, verified FEMA NFHL snapshot instead of removing the overlay."
+                : water.floodZoneStatus === "UNAVAILABLE"
+                  ? "No verified regional flood-zone snapshot is currently available. River and coastal observations remain unaffected."
+                  : water.floodZoneStatus === "DEMO"
+                    ? "Loading the verified FEMA NFHL regional snapshot. River and coastal observations connect independently."
+                  : `${water.floodZones.features.length} Special Flood Hazard Area polygons are available for map display and feature identification. The overlay is mapped hazard context, not live inundation.`}</p>
+            </div>
+            <small>
+              {water.floodZoneMetadata.publisher}<br />
+              Data updated {water.floodZoneMetadata.dataUpdatedAt ? formatTime(water.floodZoneMetadata.dataUpdatedAt, true) : "—"} CT · verified {water.floodZoneMetadata.verifiedAt ? formatTime(water.floodZoneMetadata.verifiedAt, true) : "—"} CT<br />
+              Background refresh every {water.floodZoneMetadata.refreshIntervalDays} days
+            </small>
+          </div>
           <div className="water-station-grid">
             {water.riverGauges.map((gauge) => (
               <article className="water-station-card" key={gauge.id}>
@@ -362,7 +405,7 @@ export default function Home() {
               </article>
             ))}
           </div>
-          <p className="water-boundary">Operational awareness only. Gauge observations can be provisional; cached thresholds may intentionally lag live levels by up to 24 hours because they are slowly changing reference metadata. FEMA flood zones describe mapped hazard, not current inundation. Representative assets remain demonstration records until an authoritative asset registry is connected.</p>
+          <p className="water-boundary">Operational awareness only. Gauge observations can be provisional; cached thresholds may intentionally lag live levels by up to 24 hours because they are slowly changing reference metadata. FEMA NFHL zones describe mapped hazard, not current inundation; Osprey retains the last verified complete snapshot when a refresh fails. Representative assets remain demonstration records until an authoritative asset registry is connected.</p>
         </section>
 
         <section className="agent-section" id="agents">

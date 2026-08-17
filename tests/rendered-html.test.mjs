@@ -36,6 +36,9 @@ test("server-renders the Houston–Galveston incident room", async () => {
   assert.match(html, /EXPECTED METADATA LAG/);
   assert.match(html, /Threshold Metadata pending/);
   assert.match(html, /caches verified values for 24 hours/);
+  assert.match(html, /FLOOD-ZONE REFERENCE/);
+  assert.match(html, /Loading the verified FEMA NFHL regional snapshot/);
+  assert.match(html, /Background refresh every.*7.*days/);
   assert.match(html, /NOAA STAGE LADDER/);
   assert.match(html, /Readiness; flooding not implied/);
   assert.match(html, /Initial limited impacts/);

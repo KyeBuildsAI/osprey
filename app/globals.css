@@ -112,6 +112,16 @@ button { cursor: pointer; }
 .threshold-cache-note strong { display: block; font: 500 15px Georgia, serif; }
 .threshold-cache-note p { margin: 5px 0 0; color: #61776f; font-size: 10px; line-height: 1.5; }
 .threshold-cache-note > small { padding-left: 16px; color: #688078; border-left: 1px solid #c9d9d3; font: 8px/1.7 var(--font-geist-mono); }
+.fema-freshness-note { margin-top: 10px; padding: 14px 16px; display: grid; grid-template-columns: 155px minmax(0,1fr) 260px; gap: 18px; align-items: center; color: #315963; border: 1px solid #cadde2; background: #edf5f7; }
+.fema-freshness-note > span { align-self: start; color: #347284; font-size: 8px; font-weight: 760; letter-spacing: .12em; }
+.fema-freshness-note > span i { width: 6px; height: 6px; margin-right: 7px; display: inline-block; border-radius: 50%; background: #3f8498; box-shadow: 0 0 0 3px rgba(63,132,152,.12); }
+.fema-freshness-note strong { display: block; font: 500 15px Georgia, serif; }
+.fema-freshness-note p { margin: 5px 0 0; color: #60777d; font-size: 10px; line-height: 1.5; }
+.fema-freshness-note > small { padding-left: 16px; color: #687d82; border-left: 1px solid #c6d9de; font: 8px/1.7 var(--font-geist-mono); }
+.fema-status-pending { color: #735c31; border-color: #ead6ad; background: #faf3e4; }
+.fema-status-pending > span, .fema-status-pending p, .fema-status-pending > small { color: #796848; }
+.fema-status-pending > span i { background: #d39b37; box-shadow: 0 0 0 3px rgba(211,155,55,.13); }
+.fema-status-unavailable { color: #7d4337; border-color: #ead0ca; background: #faeeeb; }
 .water-station-grid { margin-top: 15px; display: grid; grid-template-columns: repeat(auto-fit,minmax(270px,1fr)); border-top: 1px solid var(--line); border-left: 1px solid var(--line); background: #fff; box-shadow: 0 9px 30px rgba(31,49,42,.04); }
 .water-station-card { min-width: 0; min-height: 250px; padding: 17px; display: flex; flex-direction: column; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 .water-station-card header { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
@@ -514,6 +524,8 @@ button { cursor: pointer; }
   .map-intelligence-layout { grid-template-columns: 1fr; }
   .threshold-cache-note { grid-template-columns: 130px 1fr; }
   .threshold-cache-note > small { grid-column: 1 / -1; padding: 9px 0 0; border-top: 1px solid #c9d9d3; border-left: 0; }
+  .fema-freshness-note { grid-template-columns: 130px 1fr; }
+  .fema-freshness-note > small { grid-column: 1 / -1; padding: 9px 0 0; border-top: 1px solid #c6d9de; border-left: 0; }
   .feature-inspector { height: auto; min-height: 400px; border-top: 1px solid var(--line); border-left: 0; }
   .feature-inspector > footer { margin-top: 0; }
 }
@@ -542,6 +554,8 @@ button { cursor: pointer; }
   .water-depth-panel { margin-left: 18px; margin-right: 18px; }
   .threshold-cache-note { grid-template-columns: 1fr; gap: 8px; }
   .threshold-cache-note > small { grid-column: auto; }
+  .fema-freshness-note { grid-template-columns: 1fr; gap: 8px; }
+  .fema-freshness-note > small { grid-column: auto; }
   .evidence-graph, .action-panel { margin-left: 18px; margin-right: 18px; }
   .operational-workspace { margin-left: 18px; margin-right: 18px; }
   .shared-state > div { overflow-x: auto; padding-bottom: 4px; }
