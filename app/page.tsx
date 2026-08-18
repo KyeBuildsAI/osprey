@@ -256,7 +256,6 @@ export default function Home() {
   const forecastHour = selectedForecastFrame ? forecastOffsetHours(firstForecastTime, selectedForecastFrame.startTime) : 0;
   const forecastMarkIndexes = [...new Set([0, 3, 6, 9, 12].map((index) => Math.min(index, Math.max(0, forecastFrames.length - 1))))];
   const reportingSources = intelligence.sources.filter((source) => ["LIVE", "CACHED"].includes(source.status)).length;
-  const activeWorkspaceMeta = workspaces.find((workspace) => workspace.id === activeWorkspace) ?? workspaces[0];
   const elevatedGauges = water.riverGauges.filter((gauge) => !["NORMAL", "UNKNOWN"].includes(gauge.category));
   const highestPriorityImpact = displayedOperationalImpacts[0];
 
@@ -310,15 +309,20 @@ export default function Home() {
       </aside>
 
       <section className="room-workspace" id="top">
+        <section className="location-bar" aria-label="Operating locations">
+          <span>OPERATING LOCATIONS</span>
+          <nav aria-label="Select operating location">
+            <button className="location-selected" aria-current="page">
+              <span>01</span><strong>Houston–Galveston</strong><small>Active incident</small>
+            </button>
+          </nav>
+          <small>1 connected location · additional locations will appear here</small>
+        </section>
+
         <header className="room-topbar">
           <div className="incident-code"><span>{incident.id}</span><i />{incident.status} INCIDENT</div>
           <div className="classification">{incident.classification}</div>
         </header>
-
-        <section className="workspace-context" aria-label="Current Osprey workspace">
-          <div><span>{activeWorkspaceMeta.number} · {activeWorkspaceMeta.label.toUpperCase()}</span><strong>{activeWorkspaceMeta.description}</strong></div>
-          <div className="workspace-health"><i className={reportingSources === intelligence.sources.length ? "workspace-health-live" : ""} /><span>{reportingSources}/{intelligence.sources.length} sources ready</span><small>Updated {formatTime(incident.updatedAt)} CT</small></div>
-        </section>
 
         {refreshState === "error" && (
           <div className="source-warning" role="status">
@@ -358,7 +362,7 @@ export default function Home() {
             <article><span>ASSETS TO WATCH</span><strong>{elevatedAssets}</strong><small>{assets.length} priority assets screened</small></article>
           </div>
           <div className="command-priorities">
-            <button onClick={() => changeWorkspace("map")}><span>01 · SPATIAL PICTURE</span><strong>Inspect warnings, disruptions and exposed infrastructure</strong><small>Open operational map →</small></button>
+            <button onClick={() => document.getElementById("operational-map")?.scrollIntoView({ behavior: "smooth", block: "start" })}><span>01 · SPATIAL PICTURE</span><strong>Inspect warnings, disruptions and exposed infrastructure</strong><small>View the map below →</small></button>
             <button onClick={() => changeWorkspace("intelligence", closureImpacts.length > 0 ? "transport" : "flood")}><span>02 · LIVE EVIDENCE</span><strong>{highestPriorityImpact ? `${highestPriorityImpact.status}: ${highestPriorityImpact.location}` : assessments.weather.headline}</strong><small>Open detailed intelligence →</small></button>
             <button onClick={() => changeWorkspace("decisions")}><span>03 · GOVERNED ACTION</span><strong>{packetQueued ? selectedCourse.title : assessments.operations.headline}</strong><small>{packetQueued ? "Packet awaiting named approval" : "Review options and evidence"} →</small></button>
           </div>
@@ -425,7 +429,7 @@ export default function Home() {
           </div>
         </section>
 
-        <section className="operational-workspace map-only" id="operational-map">
+        <section className="operational-workspace primary-map-workspace" id="operational-map">
           <div className="hazard-lenses" aria-label="Hazard-specific operational views">
             <span>OPERATIONAL LENS</span>
             <div>
@@ -445,7 +449,7 @@ export default function Home() {
 
           <div className="map-panel">
             <div className="map-panel-header">
-              <div><span className="section-kicker">{activeHazard.label.toUpperCase()} OPERATIONAL MAP</span><h2>Exposure and forecast workspace</h2></div>
+              <div><span className="section-kicker">{activeWorkspace === "overview" ? "MAIN" : activeHazard.label.toUpperCase()} OPERATIONAL MAP</span><h2>{activeWorkspace === "overview" ? "The shared spatial picture" : "Exposure and forecast workspace"}</h2></div>
               <div className="map-layer-controls">
                 {(["Risk", "Impact", "Assets"] as const).map((layer) => (
                   <button key={layer} className={mapLayer === layer ? "selected" : ""} onClick={() => setMapLayer(layer)} aria-pressed={mapLayer === layer}>{layer}</button>
@@ -463,7 +467,7 @@ export default function Home() {
               forecastHour={forecastHour}
               forecastValidAt={selectedForecastFrame?.startTime ?? null}
               hazard={activeHazard.id}
-              active={activeWorkspace === "map"}
+              active={activeWorkspace === "map" || activeWorkspace === "overview"}
               onFeatureSelect={setSelectedMapFeature}
               onOpenInfrastructure={openInfrastructureContext}
             />

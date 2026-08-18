@@ -22,6 +22,10 @@ test("server-renders the Houston–Galveston incident room", async () => {
   assert.match(html, /<title>Osprey/);
   assert.match(html, /Houston–Galveston/);
   assert.match(html, /ACTIVE(?:<!-- -->)? INCIDENT/);
+  assert.match(html, /OPERATING LOCATIONS/);
+  assert.match(html, /Houston–Galveston/);
+  assert.match(html, /additional locations will appear here/);
+  assert.match(html, /Incident room workspaces/);
   assert.match(html, /SHARED INCIDENT STATE/);
   assert.match(html, /Exceptions, posture and immediate priorities/);
   assert.match(html, /Spatial exposure and forecast exploration/);
@@ -38,6 +42,8 @@ test("server-renders the Houston–Galveston incident room", async () => {
   assert.match(html, /Received/);
   assert.match(html, /Refresh live intelligence/);
   assert.match(html, /OPERATIONAL MAP/);
+  assert.match(html, /MAIN(?:<!-- -->)? OPERATIONAL MAP/);
+  assert.match(html, /The shared spatial picture/);
   assert.match(html, /INFRASTRUCTURE WINDOW/);
   assert.match(html, /LOADING INFRASTRUCTURE MAP/);
   assert.match(html, /EXPOSURE QUERY/);
