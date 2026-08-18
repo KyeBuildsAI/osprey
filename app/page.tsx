@@ -15,7 +15,8 @@ const agentOrder: AgentId[] = ["weather", "infrastructure", "operations", "commu
 
 type WorkspaceId = "overview" | "map" | "intelligence" | "decisions";
 type IntelligenceTab = "weather" | "flood" | "transport" | "infrastructure" | "agents" | "sources";
-type PacketStatus = "DRAFT" | "PENDING_APPROVAL" | "APPROVED" | "DEFERRED";
+type ApprovalTab = "needs" | "progress" | "history";
+type PacketStatus = "DRAFT" | "PENDING_APPROVAL" | "APPROVED" | "DEFERRED" | "REJECTED";
 type TaskStatus = "HELD" | "OPEN" | "ACKNOWLEDGED" | "COMPLETE";
 
 type WorkflowEvent = {
@@ -31,7 +32,7 @@ const workspaces: Array<{ id: WorkspaceId; label: string; number: string; hash: 
   { id: "overview", label: "Overview", number: "01", hash: "overview", description: "Exceptions, posture and immediate priorities" },
   { id: "map", label: "Map", number: "02", hash: "operational-map", description: "Spatial exposure and forecast exploration" },
   { id: "intelligence", label: "Intelligence", number: "03", hash: "intelligence", description: "Deep feeds, agents and provenance" },
-  { id: "decisions", label: "Decisions", number: "04", hash: "decisions", description: "Evidence, approval, actions and audit" },
+  { id: "decisions", label: "Approvals", number: "04", hash: "decisions", description: "Human decisions, actions and audit" },
 ];
 
 const intelligenceTabs: Array<{ id: IntelligenceTab; label: string }> = [
@@ -182,6 +183,10 @@ export default function Home() {
   const [decisionOpen, setDecisionOpen] = useState(false);
   const [selectedOption, setSelectedOption] = useState<(typeof decisionOptions)[number]["id"]>("COA-02");
   const [packetStatus, setPacketStatus] = useState<PacketStatus>("DRAFT");
+  const [approvalTab, setApprovalTab] = useState<ApprovalTab>("needs");
+  const [approvalConfirm, setApprovalConfirm] = useState(false);
+  const [editingDecision, setEditingDecision] = useState(false);
+  const [editedDecision, setEditedDecision] = useState("");
   const [actionTasks, setActionTasks] = useState(actionSeed);
   const [workflowEvents, setWorkflowEvents] = useState<WorkflowEvent[]>([]);
   const [selectedMapFeature, setSelectedMapFeature] = useState<MapFeatureSelection | null>(null);
@@ -250,6 +255,7 @@ export default function Home() {
   const elevatedAssets = assets.filter((asset) => asset.exposure !== "NORMAL").length;
   const activeHazard = hazardViews.find((hazard) => hazard.id === activeHazardId) ?? hazardViews[0];
   const selectedCourse = decisionOptions.find((option) => option.id === selectedOption) ?? decisionOptions[1];
+  const activeDecisionTitle = editedDecision.trim() || selectedCourse.title;
   const packetQueued = packetStatus === "PENDING_APPROVAL" || packetStatus === "APPROVED";
   const packetApproved = packetStatus === "APPROVED";
   const openTasks = actionTasks.filter((task) => task.status === "OPEN" || task.status === "ACKNOWLEDGED").length;
@@ -269,20 +275,28 @@ export default function Home() {
 
   const queueForApproval = () => {
     setPacketStatus("PENDING_APPROVAL");
-    appendWorkflowEvent("Decision packet submitted for approval", `${selectedCourse.title} is held for named commander approval. No tasks or messages have been released.`);
+    appendWorkflowEvent("Decision packet submitted for approval", `${activeDecisionTitle} is held for named commander approval. No tasks or messages have been released.`);
     setDecisionOpen(false);
   };
 
   const approvePacket = () => {
     setPacketStatus("APPROVED");
     setActionTasks((tasks) => tasks.map((task) => ({ ...task, status: "OPEN" })));
-    appendWorkflowEvent("Decision approved and action set opened", `${selectedCourse.title} was approved by Kye Hussain. Three reversible readiness checks are now assigned; communications remain prepared, not released.`);
+    appendWorkflowEvent("Decision approved and action set opened", `${activeDecisionTitle} was approved by Kye Hussain. Three reversible readiness checks are now assigned; communications remain prepared, not released.`);
+    setApprovalConfirm(false);
+    setApprovalTab("progress");
     setDecisionOpen(false);
   };
 
   const deferPacket = () => {
     setPacketStatus("DEFERRED");
-    appendWorkflowEvent("Decision deferred for further analysis", `${selectedCourse.title} remains unapproved while additional evidence is requested. No tasks or messages have been released.`);
+    appendWorkflowEvent("Decision deferred for further analysis", `${activeDecisionTitle} remains unapproved while additional evidence is requested. No tasks or messages have been released.`);
+    setDecisionOpen(false);
+  };
+
+  const rejectProposal = () => {
+    setPacketStatus("REJECTED");
+    appendWorkflowEvent("Proposal rejected", `${activeDecisionTitle} was not authorised. No tasks or communications were released.`);
     setDecisionOpen(false);
   };
 
@@ -818,37 +832,37 @@ export default function Home() {
           </div>
         </section>
 
-        <section className="evidence-graph decisions-only" aria-label="Incident evidence graph">
-          <div className="graph-heading">
-            <div><span className="section-kicker">INCIDENT EVIDENCE GRAPH</span><h2>From live source to governed decision</h2></div>
-            <span><i />{assessments.weather.evidence.length + assessments.infrastructure.evidence.length} linked records · state v{incident.version}</span>
-          </div>
-          <div className="evidence-flow">
-            <article className="flow-node flow-sources">
-              <span className="flow-step">01 · SOURCES</span>
-              {sourceEvidence.map((evidence, index) => (
-                <div className="source-record" key={`${evidence.id}-${index}`}><i /><span><strong>{evidence.label}</strong><small>{evidence.id} · {formatTime(evidence.observedAt)} CT</small></span></div>
-              ))}
-            </article>
-            <article className="flow-node">
-              <span className="flow-step">02 · WEATHER CLAIM</span>
-              <strong>{assessments.weather.headline}</strong>
-              <p>{assessments.weather.summary}</p>
-              <small>{assessments.weather.confidence}% confidence · NWS evidence</small>
-            </article>
-            <article className="flow-node flow-infrastructure">
-              <span className="flow-step">03 · EXPOSURE</span>
-              <strong>{assessments.infrastructure.headline}</strong>
-              <p>{assessments.infrastructure.summary}</p>
-              <small>{assets.length} assets assessed · {elevatedAssets} to monitor</small>
-            </article>
-            <article className="flow-node flow-decision">
-              <span className="flow-step">04 · DECISION</span>
-              <strong>{packetQueued ? selectedCourse.title : assessments.operations.headline}</strong>
-              <p>{packetStatus === "APPROVED" ? "Named approval created a controlled internal action set. External communications remain held." : packetQueued ? "Packet is held for named commander approval. No external effect has been released." : assessments.operations.summary}</p>
-              <button onClick={() => setDecisionOpen(true)}>{packetStatus === "APPROVED" ? "Review action set" : packetQueued ? "Reopen packet" : "Review decision packet"} →</button>
-            </article>
-          </div>
+        <section className="approvals-workspace decisions-only" aria-label="Decisions and actions approval centre">
+          <header className="approvals-header">
+            <div><span className="section-kicker">HUMAN APPROVAL CENTRE</span><h1>Decisions &amp; Actions</h1><p>Review operational actions proposed by Osprey’s agents. Nothing consequential happens without your approval.</p></div>
+            <span className="approvals-boundary">SIMULATION · HUMAN AUTHORITY REQUIRED</span>
+          </header>
+          <nav className="approval-tabs" aria-label="Approval views">
+            <button className={approvalTab === "needs" ? "approval-tab-selected" : ""} onClick={() => setApprovalTab("needs")} aria-pressed={approvalTab === "needs"}>Needs your decision <b>{packetStatus === "DRAFT" ? "1" : "0"}</b></button>
+            <button className={approvalTab === "progress" ? "approval-tab-selected" : ""} onClick={() => setApprovalTab("progress")} aria-pressed={approvalTab === "progress"}>In progress <b>{packetStatus === "APPROVED" || packetStatus === "PENDING_APPROVAL" ? "1" : "0"}</b></button>
+            <button className={approvalTab === "history" ? "approval-tab-selected" : ""} onClick={() => setApprovalTab("history")} aria-pressed={approvalTab === "history"}>Decision history <b>{decisionTimeline.length}</b></button>
+          </nav>
+
+          {approvalTab === "needs" && (
+            <div className="approval-review-layout">
+              <aside className="approval-queue" aria-label="Approval queue">
+                <div><span className="section-kicker">OPEN PROPOSALS</span><strong>{packetStatus === "DRAFT" ? "1 needs your decision" : "No proposal awaiting decision"}</strong></div>
+                {packetStatus === "DRAFT" ? <button className="proposal-card proposal-selected" onClick={() => setDecisionOpen(true)}><span>DECISION NEEDED <i>Before next forecast frame</i></span><strong>{activeDecisionTitle}</strong><p>Houston–Galveston priority assets · proposed by Operations Agent</p><small><b>{sourceEvidence.length}</b> supporting evidence items · <em>1 challenge</em></small></button> : <p className="approval-empty">{packetStatus === "DEFERRED" ? "Additional analysis has been requested. The proposal will return here when the evidence is ready." : packetStatus === "REJECTED" ? "The proposed action was not authorised. Its decision record remains in history." : "This queue is clear. Active approved work appears under In progress."}</p>}
+              </aside>
+              <article className="approval-review">
+                <span className="section-kicker">REVIEW PROPOSAL</span>
+                <div className="review-title-row"><div><h2>{activeDecisionTitle}</h2><p>Prepare a controlled internal readiness response for exposed healthcare, transport and bridge assets.</p></div><span>PROPOSED</span></div>
+                <div className="review-facts"><div><span>Decision needed</span><strong>Before next forecast frame</strong></div><div><span>Proposed by</span><strong>Operations Agent</strong></div><div><span>Operational scope</span><strong>Houston–Galveston priority assets</strong></div></div>
+                <div className="review-sections">
+                  <section><span>WHY THIS IS BEING PROPOSED</span><p>{assessments.operations.summary}</p></section>
+                  <section className="review-evidence"><span>EVIDENCE</span>{sourceEvidence.map((evidence) => <button key={evidence.id} onClick={() => { setActiveWorkspace("intelligence"); setActiveIntelligenceTab(evidence.id.startsWith("NWS") ? "weather" : "infrastructure"); window.location.hash = "intelligence"; }}><i />{evidence.label}<small>{evidence.source} · {formatTime(evidence.observedAt)} CT</small></button>)}</section>
+                  <section className="review-challenge"><span>UNCERTAINTY &amp; CHALLENGE</span><p><b>Weather confidence: {assessments.weather.confidence}%.</b> Verify owner readiness before escalating action; current evidence supports preparation, not a public release.</p></section>
+                  <section className="review-effect"><span>WHAT APPROVAL WILL DO</span><p>It will open three reversible readiness tasks and prepare an internal briefing. It will not control infrastructure or send external communications.</p></section>
+                </div>
+                <button className="review-proposal-button" onClick={() => setDecisionOpen(true)}>{packetStatus === "DRAFT" ? "Review and decide" : "Open decision record"} →</button>
+              </article>
+            </div>
+          )}
         </section>
 
         <div className="operations-grid intelligence-only intelligence-operations">
@@ -891,6 +905,7 @@ export default function Home() {
           </section>
         </div>
 
+        {approvalTab === "progress" && <>
         <section className="action-panel decisions-only" id="actions">
           <div className="graph-heading">
             <div><span className="section-kicker">DECISION-TO-OUTCOME CHAIN</span><h2>One governed operational thread</h2></div>
@@ -941,8 +956,9 @@ export default function Home() {
             </aside>
           </div>
         </section>
+        </>}
 
-        <section className="timeline-panel decisions-only" id="timeline">
+        {approvalTab === "history" && <section className="timeline-panel decisions-only" id="timeline">
           <div className="section-heading">
             <div><span className="section-kicker">INCIDENT TIMELINE</span><h2>What Osprey knew, and when</h2></div>
             <span className="audit-label">AUDIT TRAIL · {decisionTimeline.length} EVENTS</span>
@@ -957,7 +973,7 @@ export default function Home() {
               </article>
             ))}
           </div>
-        </section>
+        </section>}
 
         <footer className="room-footer">
           <span>OSPREY · AI-NATIVE INCIDENT COMMAND</span>
@@ -969,7 +985,7 @@ export default function Home() {
         <div className="decision-overlay" role="presentation">
           <section className="decision-drawer" role="dialog" aria-modal="true" aria-labelledby="decision-title">
             <header>
-              <div><span className="section-kicker">GOVERNED DECISION PACKET · DP-HGX-01</span><h2 id="decision-title">Set the Houston–Galveston operating posture</h2><p>Compare options against the same live weather and authoritative priority-asset evidence. No task, message or real-world action is released without named human approval.</p></div>
+              <div><span className="section-kicker">GOVERNED DECISION PACKET · DP-HGX-01</span><h2 id="decision-title">{approvalConfirm ? "Confirm approval" : activeDecisionTitle}</h2><p>{approvalConfirm ? "Review exactly what you are authorising before the simulated action set is opened." : "Compare options against the same live weather and authoritative priority-asset evidence. No task, message or real-world action is released without named human approval."}</p></div>
               <button className="close-button" onClick={() => setDecisionOpen(false)} aria-label="Close decision packet">×</button>
             </header>
             <div className="packet-summary">
@@ -986,11 +1002,15 @@ export default function Home() {
                   <small>{option.id} · incident state v{incident.version}</small>
                 </button>
               ))}
+              {editingDecision && <label className="decision-edit"><span>EDITED ACTION SCOPE</span><input value={editedDecision} onChange={(event) => setEditedDecision(event.target.value)} placeholder={selectedCourse.title} /><small>The original proposal remains visible in the audit record. Your edit will be recorded as the human-approved version.</small></label>}
             </div>
+            {approvalConfirm && <div className="approval-confirmation"><span>YOU ARE APPROVING</span><strong>{activeDecisionTitle}</strong><p>This will simulate assigning three reversible readiness tasks and preparing an internal briefing. It will not release an external communication or control infrastructure.</p><dl><div><dt>Authority</dt><dd>Kye Hussain</dd></div><div><dt>Evidence state</dt><dd>{sourceEvidence.length} records · state v{incident.version}</dd></div></dl></div>}
             <footer>
               <p><strong>Demonstration boundary:</strong> this simulates governance only; no task, message or real-world action is released outside Osprey.</p>
-              {packetStatus === "PENDING_APPROVAL" ? <button className="secondary-action" onClick={deferPacket}>Defer for analysis</button> : <button className="secondary-action" onClick={() => { appendWorkflowEvent("Additional analysis requested", "The decision owner requested further evidence before submitting a packet for approval."); setDecisionOpen(false); }}>Request more analysis</button>}
-              {packetStatus === "PENDING_APPROVAL" ? <button className="primary-action" onClick={approvePacket}>Approve and open actions</button> : packetStatus === "APPROVED" ? <button className="primary-action" onClick={() => setDecisionOpen(false)}>Actions are active</button> : <button className="primary-action" onClick={queueForApproval}>{packetStatus === "DEFERRED" ? "Resubmit for approval" : "Queue for commander approval"}</button>}
+              {approvalConfirm ? <button className="secondary-action" onClick={() => setApprovalConfirm(false)}>Go back</button> : <button className="secondary-action" onClick={() => { appendWorkflowEvent("Additional analysis requested", "The decision owner requested further evidence before approving this proposal."); setPacketStatus("DEFERRED"); setDecisionOpen(false); }}>Request more analysis</button>}
+              {!approvalConfirm && <button className="secondary-action" onClick={() => setEditingDecision((editing) => !editing)}>{editingDecision ? "Save revised action" : "Edit before approving"}</button>}
+              {!approvalConfirm && <button className="reject-action" onClick={rejectProposal}>Reject proposal</button>}
+              {approvalConfirm ? <button className="primary-action" onClick={approvePacket}>Confirm approval</button> : packetStatus === "APPROVED" ? <button className="primary-action" onClick={() => setDecisionOpen(false)}>Actions are active</button> : <button className="primary-action" onClick={() => setApprovalConfirm(true)}>Approve action</button>}
             </footer>
           </section>
         </div>
