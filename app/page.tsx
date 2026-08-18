@@ -726,8 +726,8 @@ export default function Home() {
           <div className="evidence-flow">
             <article className="flow-node flow-sources">
               <span className="flow-step">01 · SOURCES</span>
-              {sourceEvidence.map((evidence) => (
-                <div className="source-record" key={evidence.id}><i /><span><strong>{evidence.label}</strong><small>{evidence.id} · {formatTime(evidence.observedAt)} CT</small></span></div>
+              {sourceEvidence.map((evidence, index) => (
+                <div className="source-record" key={`${evidence.id}-${index}`}><i /><span><strong>{evidence.label}</strong><small>{evidence.id} · {formatTime(evidence.observedAt)} CT</small></span></div>
               ))}
             </article>
             <article className="flow-node">
