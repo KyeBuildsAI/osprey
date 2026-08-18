@@ -256,6 +256,7 @@ export default function Home() {
   const forecastHour = selectedForecastFrame ? forecastOffsetHours(firstForecastTime, selectedForecastFrame.startTime) : 0;
   const forecastMarkIndexes = [...new Set([0, 3, 6, 9, 12].map((index) => Math.min(index, Math.max(0, forecastFrames.length - 1))))];
   const reportingSources = intelligence.sources.filter((source) => ["LIVE", "CACHED"].includes(source.status)).length;
+  const sourceGap = intelligence.sources.find((source) => !["LIVE", "CACHED"].includes(source.status));
   const elevatedGauges = water.riverGauges.filter((gauge) => !["NORMAL", "UNKNOWN"].includes(gauge.category));
   const highestPriorityImpact = displayedOperationalImpacts[0];
 
@@ -335,14 +336,17 @@ export default function Home() {
         <section className="incident-hero overview-only" id="overview">
           <div className="hero-main">
             <div className="eyebrow-row"><span>TEXAS GULF COAST</span><i />SHARED INCIDENT STATE v{incident.version}</div>
-            <h1>Houston–Galveston<br />Incident Room</h1>
-            <p>Live weather, radar rainfall, river, coastal and flood-zone evidence enters one shared state, where four specialist agents assess conditions, infrastructure exposure, operations and communications.</p>
+            <h1>Houston–Galveston Incident Room</h1>
+            <p>One shared operational picture for conditions, infrastructure exposure and governed action.</p>
           </div>
           <div className="hero-state">
             <span>CURRENT OPERATIONAL STATE</span>
             <strong className={riskClass(incident.severity)}>{incident.severity}</strong>
             <p>{assessments.weather.headline}</p>
             <time>Updated {formatTime(incident.updatedAt, true)} CT</time>
+            <small className={sourceGap ? "state-trust state-trust-attention" : "state-trust"}>
+              <i />{sourceGap ? `${sourceGap.name} needs attention` : `${reportingSources}/${intelligence.sources.length} critical sources live or verified`}
+            </small>
             <button className="refresh-button" onClick={() => void refreshIntelligence()} disabled={refreshState === "loading"}>
               <span className={refreshState === "loading" ? "refresh-spinning" : ""}>↻</span>
               {refreshState === "loading" ? "Refreshing intelligence…" : "Refresh live intelligence"}
@@ -350,53 +354,38 @@ export default function Home() {
           </div>
         </section>
 
-        <section className="command-brief overview-only" aria-label="Operational exceptions and priorities">
-          <div className="command-brief-heading">
-            <div><span className="section-kicker">COMMAND BRIEF</span><h2>What requires attention now</h2></div>
-            <span>Normal records are collapsed</span>
-          </div>
-          <div className="command-metrics">
-            <article><span>ACTIVE WARNINGS</span><strong>{weather.activeAlerts.length}</strong><small>{weather.activeAlerts.length === 0 ? "No active NWS warnings" : "Review authoritative alert detail"}</small></article>
-            <article><span>RESTRICTED / CLOSED</span><strong>{closureImpacts.length}</strong><small>{highestPriorityImpact?.location ?? "No confirmed transport restriction"}</small></article>
-            <article><span>ELEVATED GAUGES</span><strong>{elevatedGauges.length}</strong><small>{elevatedGauges[0]?.name ?? `${water.riverGauges.length} gauges reporting normally`}</small></article>
-            <article><span>ASSETS TO WATCH</span><strong>{elevatedAssets}</strong><small>{assets.length} priority assets screened</small></article>
-          </div>
-          <div className="command-priorities">
-            <button onClick={() => document.getElementById("operational-map")?.scrollIntoView({ behavior: "smooth", block: "start" })}><span>01 · SPATIAL PICTURE</span><strong>Inspect warnings, disruptions and exposed infrastructure</strong><small>View the map below →</small></button>
-            <button onClick={() => changeWorkspace("intelligence", closureImpacts.length > 0 ? "transport" : "flood")}><span>02 · LIVE EVIDENCE</span><strong>{highestPriorityImpact ? `${highestPriorityImpact.status}: ${highestPriorityImpact.location}` : assessments.weather.headline}</strong><small>Open detailed intelligence →</small></button>
-            <button onClick={() => changeWorkspace("decisions")}><span>03 · GOVERNED ACTION</span><strong>{packetQueued ? selectedCourse.title : assessments.operations.headline}</strong><small>{packetQueued ? "Packet awaiting named approval" : "Review options and evidence"} →</small></button>
-          </div>
-        </section>
+        <section className="overview-command-deck overview-only" aria-label="Command priorities and decision queue">
+          <section className="command-brief" aria-label="Operational exceptions and priorities">
+            <div className="command-brief-heading">
+              <div><span className="section-kicker">COMMAND BRIEF</span><h2>What requires attention now</h2></div>
+              <span>Normal records are collapsed</span>
+            </div>
+            <div className="command-metrics">
+              <article className={weather.activeAlerts.length === 0 ? "metric-normal" : ""}><span>ACTIVE WARNINGS</span><strong>{weather.activeAlerts.length}</strong><small>{weather.activeAlerts.length === 0 ? "No active NWS warnings" : "Review authoritative alert detail"}</small></article>
+              <article className={closureImpacts.length === 0 ? "metric-normal" : "metric-attention"}><span>RESTRICTED / CLOSED</span><strong>{closureImpacts.length}</strong><small>{highestPriorityImpact?.location ?? "No confirmed transport restriction"}</small></article>
+              <article className={elevatedGauges.length === 0 ? "metric-normal" : "metric-attention"}><span>ELEVATED GAUGES</span><strong>{elevatedGauges.length}</strong><small>{elevatedGauges[0]?.name ?? `${water.riverGauges.length} gauges reporting normally`}</small></article>
+              <article className={elevatedAssets === 0 ? "metric-normal" : "metric-attention"}><span>ASSETS TO WATCH</span><strong>{elevatedAssets}</strong><small>{assets.length} priority assets screened</small></article>
+            </div>
+            <div className="command-priorities">
+              <button onClick={() => document.getElementById("operational-map")?.scrollIntoView({ behavior: "smooth", block: "start" })}><span>01 · SPATIAL PICTURE</span><strong>Inspect warnings, disruptions and exposed infrastructure</strong><small>View the command map →</small></button>
+              <button onClick={() => changeWorkspace("intelligence", closureImpacts.length > 0 ? "transport" : "flood")}><span>02 · LIVE EVIDENCE</span><strong>{highestPriorityImpact ? `${highestPriorityImpact.status}: ${highestPriorityImpact.location}` : assessments.weather.headline}</strong><small>Open detailed intelligence →</small></button>
+              <button onClick={() => setDecisionOpen(true)}><span>03 · GOVERNED ACTION</span><strong>{packetQueued ? selectedCourse.title : assessments.operations.headline}</strong><small>{packetQueued ? "Packet awaiting named approval" : "Review decision packet"} →</small></button>
+            </div>
+          </section>
 
-        <section className="weather-ribbon overview-only" aria-label="Live Houston weather">
-          <div className="weather-lead">
-            <span className={`source-pill ${weather.isLive ? "pill-live" : "pill-preview"}`}><i />{weather.isLive ? "LIVE NWS" : "CONNECTING"}</span>
-            <strong>Houston conditions</strong>
-            <small>Observed {formatTime(weather.observedAt)} CT · {weather.sourceOffice}</small>
-          </div>
-          <div className="temperature"><strong>{weather.temperatureC ?? "—"}°</strong><span>C</span></div>
-          <div className="condition"><span>CONDITION</span><strong>{weather.condition}</strong><small>{weather.forecast.summary}</small></div>
-          <div className="weather-stat"><span>WIND</span><strong>{weather.windDirection ?? "—"} {weather.windSpeedMph ?? "—"} mph</strong></div>
-          <div className="weather-stat"><span>HUMIDITY</span><strong>{weather.humidityPercent ?? "—"}%</strong></div>
-          <div className="weather-stat alert-stat"><span>ACTIVE ALERTS</span><strong>{weather.activeAlerts.length}</strong></div>
-        </section>
-
-        <section className="water-ribbon overview-only" aria-label="Live flood and water intelligence">
-          <div className="water-ribbon-lead">
-            <span className={`source-pill ${water.isLive ? "pill-live" : "pill-preview"}`}><i />{water.isLive ? "LIVE WATER" : "CONNECTING"}</span>
-            <strong>Flood &amp; water intelligence</strong>
-            <small>NOAA NWPS · USGS · NOAA CO-OPS · FEMA NFHL</small>
-          </div>
-          <div><span>RIVER GAUGES</span><strong>{water.riverGauges.length}</strong><small>Highest: {water.highestCategory}</small></div>
-          <div><span>LEAD GAUGE</span><strong>{leadGauge?.observedValue ?? "—"} {leadGauge?.observedUnit ?? ""}</strong><small>{leadGauge ? `${leadGauge.name} · ${leadGauge.trend}` : "Awaiting feed"}</small></div>
-          <div><span>COASTAL LEVEL</span><strong>{leadCoast?.observedM ?? "—"} m</strong><small>{leadCoast?.anomalyM == null ? "Awaiting tide comparison" : `${leadCoast.anomalyM >= 0 ? "+" : ""}${leadCoast.anomalyM} m vs predicted`}</small></div>
-          <div><span>FLOOD ZONES</span><strong>{floodZoneStatusLabel(water.floodZoneStatus)}</strong><small>{water.floodZones.features.length > 0 ? `${water.floodZones.features.length} mapped features` : "Gauge feeds unaffected"}</small></div>
-        </section>
-
-        <section className="shared-state overview-only" aria-label="Shared incident state flow">
-          <span className="shared-label">ONE SHARED INCIDENT STATE</span>
-          <div><span>NWS + rainfall + water + official assets</span><i>→</i><span>Weather</span><i>→</i><span>Infrastructure</span><i>→</i><span>Operations</span><i>→</i><span>Communications</span></div>
-          <small>Each specialist reads the accepted findings before it and publishes evidence-bound output back to the same incident.</small>
+          <aside className="decision-focus" aria-label="Decision queue">
+            <span className="section-kicker">DECISION QUEUE</span>
+            <div className="decision-focus-status"><i />HUMAN REVIEW REQUIRED</div>
+            <h2>{packetQueued ? "One packet awaits approval" : "One decision is ready for review"}</h2>
+            <strong>{packetQueued ? selectedCourse.title : selectedCourse.title}</strong>
+            <p>{packetQueued ? "The packet is held until a named authority accepts its exact evidence and action scope." : "Verify critical-asset readiness before the next forecast frame if operational conditions change."}</p>
+            <dl>
+              <div><dt>Authority</dt><dd>Kye Hussain</dd></div>
+              <div><dt>Evidence</dt><dd>{reportingSources}/{intelligence.sources.length} sources ready</dd></div>
+              <div><dt>First action</dt><dd>Reversible readiness check</dd></div>
+            </dl>
+            <button onClick={() => setDecisionOpen(true)}>{packetQueued ? "Open approval packet" : "Review decision packet"} →</button>
+          </aside>
         </section>
 
         <section className="intelligence-tabs intelligence-only" aria-label="Intelligence categories">
@@ -489,6 +478,44 @@ export default function Home() {
               <div className="forecast-confidence"><span>{assessments.weather.confidence}%</span><small>weather confidence</small></div>
             </div>
           </div>
+        </section>
+
+        <section className="overview-supporting-intelligence overview-only" aria-label="Supporting live intelligence">
+          <div className="overview-supporting-heading">
+            <div><span className="section-kicker">SUPPORTING INTELLIGENCE</span><h2>Conditions, water and the evidence flow behind the map.</h2></div>
+            <button onClick={() => changeWorkspace("intelligence")}>Open full intelligence →</button>
+          </div>
+
+          <section className="weather-ribbon" aria-label="Live Houston weather">
+            <div className="weather-lead">
+              <span className={`source-pill ${weather.isLive ? "pill-live" : "pill-preview"}`}><i />{weather.isLive ? "LIVE NWS" : "CONNECTING"}</span>
+              <strong>Houston conditions</strong>
+              <small>Observed {formatTime(weather.observedAt)} CT · {weather.sourceOffice}</small>
+            </div>
+            <div className="temperature"><strong>{weather.temperatureC ?? "—"}°</strong><span>C</span></div>
+            <div className="condition"><span>CONDITION</span><strong>{weather.condition}</strong><small>{weather.forecast.summary}</small></div>
+            <div className="weather-stat"><span>WIND</span><strong>{weather.windDirection ?? "—"} {weather.windSpeedMph ?? "—"} mph</strong></div>
+            <div className="weather-stat"><span>HUMIDITY</span><strong>{weather.humidityPercent ?? "—"}%</strong></div>
+            <div className="weather-stat alert-stat"><span>ACTIVE ALERTS</span><strong>{weather.activeAlerts.length}</strong></div>
+          </section>
+
+          <section className="water-ribbon" aria-label="Live flood and water intelligence">
+            <div className="water-ribbon-lead">
+              <span className={`source-pill ${water.isLive ? "pill-live" : "pill-preview"}`}><i />{water.isLive ? "LIVE WATER" : "CONNECTING"}</span>
+              <strong>Flood &amp; water intelligence</strong>
+              <small>NOAA NWPS · USGS · NOAA CO-OPS · FEMA NFHL</small>
+            </div>
+            <div><span>RIVER GAUGES</span><strong>{water.riverGauges.length}</strong><small>Highest: {water.highestCategory}</small></div>
+            <div><span>LEAD GAUGE</span><strong>{leadGauge?.observedValue ?? "—"} {leadGauge?.observedUnit ?? ""}</strong><small>{leadGauge ? `${leadGauge.name} · ${leadGauge.trend}` : "Awaiting feed"}</small></div>
+            <div><span>COASTAL LEVEL</span><strong>{leadCoast?.observedM ?? "—"} m</strong><small>{leadCoast?.anomalyM == null ? "Awaiting tide comparison" : `${leadCoast.anomalyM >= 0 ? "+" : ""}${leadCoast.anomalyM} m vs predicted`}</small></div>
+            <div><span>FLOOD ZONES</span><strong>{floodZoneStatusLabel(water.floodZoneStatus)}</strong><small>{water.floodZones.features.length > 0 ? `${water.floodZones.features.length} mapped features` : "Gauge feeds unaffected"}</small></div>
+          </section>
+
+          <section className="shared-state" aria-label="Shared incident state flow">
+            <span className="shared-label">ONE SHARED INCIDENT STATE</span>
+            <div><span>NWS + rainfall + water + official assets</span><i>→</i><span>Weather</span><i>→</i><span>Infrastructure</span><i>→</i><span>Operations</span><i>→</i><span>Communications</span></div>
+            <small>Each specialist reads the accepted findings before it and publishes evidence-bound output back to the same incident.</small>
+          </section>
         </section>
 
         <section className="asset-register-panel intelligence-only tab-infrastructure" aria-label="Official infrastructure reference register">
