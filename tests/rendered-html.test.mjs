@@ -54,6 +54,11 @@ test("server-renders the Houston–Galveston incident room", async () => {
   assert.match(html, /VISIBLE CONTEXT/);
   assert.match(html, /Terrain/);
   assert.match(html, /Source boundary/);
+  assert.match(html, /AUTHORITATIVE ASSET REGISTER v1/);
+  assert.match(html, /Real infrastructure, separated from live condition evidence/);
+  assert.match(html, /REFERENCE ≠ LIVE STATUS/);
+  assert.match(html, /The register answers “what infrastructure is here\?”/);
+  assert.match(html, /OFFICIAL INFRASTRUCTURE/);
   assert.match(html, /TIME-BASED FORECAST/);
   assert.match(html, /LIVE HOURLY NWS · issued frame · valid time shown/);
   assert.match(html, /MRMS RAINFALL OVERLAY/);

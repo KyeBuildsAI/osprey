@@ -22,7 +22,7 @@ const hazardViews = [
 
 const decisionOptions = [
   { id: "COA-01", posture: "monitor", title: "Monitor and verify", summary: "Maintain the current posture while the next NWS update and asset-owner checks complete.", benefit: "Avoids unnecessary mobilisation while conditions remain stable.", tradeoff: "Leaves less preparation time if conditions deteriorate quickly." },
-  { id: "COA-02", posture: "prepare", title: "Prepare critical-asset readiness", summary: "Ask owners to verify hospital continuity, pump availability and I-45 access without releasing an external action.", benefit: "Shortens response time while preserving operational flexibility.", tradeoff: "Uses limited coordination capacity before a severe threshold is crossed." },
+  { id: "COA-02", posture: "prepare", title: "Prepare critical-asset readiness", summary: "Ask owners to verify hospital continuity, emergency-response access and flagged bridge routes without releasing an external action.", benefit: "Shortens response time while preserving operational flexibility.", tradeoff: "Uses limited coordination capacity before a severe threshold is crossed." },
   { id: "COA-03", posture: "act", title: "Activate precautionary response", summary: "Begin a controlled readiness response for elevated assets, subject to named human approval.", benefit: "Creates the largest safety margin for a worsening hazard.", tradeoff: "Consequential preparation may be disproportionate to current evidence." },
 ] as const;
 
@@ -189,7 +189,7 @@ export default function Home() {
     };
   }, [refreshFemaInBackground, refreshIntelligence]);
 
-  const { incident, weather, water, rainfall, assessments, assets, timeline } = intelligence;
+  const { incident, weather, water, rainfall, assetRegister, assessments, assets, timeline } = intelligence;
   const activeAssessment = assessments[openAgent];
   const elevatedAssets = assets.filter((asset) => asset.exposure !== "NORMAL").length;
   const activeHazard = hazardViews.find((hazard) => hazard.id === activeHazardId) ?? hazardViews[0];
@@ -301,7 +301,7 @@ export default function Home() {
 
         <section className="shared-state" aria-label="Shared incident state flow">
           <span className="shared-label">ONE SHARED INCIDENT STATE</span>
-          <div><span>NWS + rainfall + water</span><i>→</i><span>Weather</span><i>→</i><span>Infrastructure</span><i>→</i><span>Operations</span><i>→</i><span>Communications</span></div>
+          <div><span>NWS + rainfall + water + official assets</span><i>→</i><span>Weather</span><i>→</i><span>Infrastructure</span><i>→</i><span>Operations</span><i>→</i><span>Communications</span></div>
           <small>Each specialist reads the accepted findings before it and publishes evidence-bound output back to the same incident.</small>
         </section>
 
@@ -356,6 +356,7 @@ export default function Home() {
             <OperationalMap
               alerts={weather.activeAlerts}
               assets={assets}
+              assetRegister={assetRegister}
               water={water}
               rainfall={rainfall}
               layer={mapLayer}
@@ -382,6 +383,25 @@ export default function Home() {
               </div>
               <div className="forecast-confidence"><span>{assessments.weather.confidence}%</span><small>weather confidence</small></div>
             </div>
+          </div>
+        </section>
+
+        <section className="asset-register-panel" aria-label="Official infrastructure reference register">
+          <div className="section-heading">
+            <div><span className="section-kicker">AUTHORITATIVE ASSET REGISTER v1</span><h2>Real infrastructure, separated from live condition evidence</h2></div>
+            <span className={`water-health ${assetRegister.warnings.length === 0 ? "water-health-live" : "water-health-partial"}`}><i />{assetRegister.features.length} REFERENCE RECORDS</span>
+          </div>
+          {assetRegister.warnings.length > 0 && <div className="water-notices">{assetRegister.warnings.map((warning) => <span key={warning}>{warning}</span>)}</div>}
+          <div className="asset-register-summary">
+            <article><span>CRITICAL FACILITIES</span><strong>{assetRegister.counts.HOSPITAL + assetRegister.counts.FIRE_EMS + assetRegister.counts.LAW_ENFORCEMENT}</strong><small>{assetRegister.counts.HOSPITAL} hospitals · {assetRegister.counts.FIRE_EMS} fire / EMS · {assetRegister.counts.LAW_ENFORCEMENT} law enforcement</small></article>
+            <article><span>BRIDGE WATCH</span><strong>{assetRegister.counts.BRIDGE}</strong><small>Fair or poor FHWA NBI records in the operating area</small></article>
+            <article><span>PRIMARY ROAD SEGMENTS</span><strong>{assetRegister.counts.HIGHWAY}</strong><small>Interstate and principal-arterial NHS geometry</small></article>
+            <article><span>DRAINAGE AREAS</span><strong>{assetRegister.counts.WATERSHED}</strong><small>HCFCD regional watershed boundaries</small></article>
+          </div>
+          <div className="asset-register-boundary">
+            <span><i />REFERENCE ≠ LIVE STATUS</span>
+            <div><strong>The register answers “what infrastructure is here?”</strong><p>Osprey then screens a smaller priority watchlist against live NWS alerts, NOAA rainfall, river and coastal readings, terrain height and FEMA flood-zone context. A mapped bridge condition or facility location does not prove that it is closed, damaged or flooded now.</p></div>
+            <small>{assets.length} priority assets selected for current exposure screening<br />Register refreshed {formatTime(assetRegister.fetchedAt, true)} CT</small>
           </div>
         </section>
 
@@ -492,7 +512,7 @@ export default function Home() {
               </article>
             ))}
           </div>
-          <p className="water-boundary">Operational awareness only. Gauge observations can be provisional; cached thresholds may intentionally lag live levels by up to 24 hours because they are slowly changing reference metadata. FEMA NFHL zones describe mapped hazard, not current inundation; Osprey retains the last verified complete snapshot when a refresh fails. Representative assets remain demonstration records until an authoritative asset registry is connected.</p>
+          <p className="water-boundary">Operational awareness only. Gauge observations can be provisional; cached thresholds may intentionally lag live levels by up to 24 hours because they are slowly changing reference metadata. FEMA NFHL zones describe mapped hazard, not current inundation; Osprey retains the last verified complete snapshot when a refresh fails. Infrastructure identities come from official reference inventories, but their current operating condition is not inferred.</p>
         </section>
 
         <section className="agent-section" id="agents">
@@ -592,19 +612,19 @@ export default function Home() {
         <div className="operations-grid">
           <section className="asset-panel" id="assets">
             <div className="panel-heading">
-              <div><span className="section-kicker">REPRESENTATIVE INFRASTRUCTURE</span><h2>Critical assets</h2></div>
+              <div><span className="section-kicker">PRIORITY ASSET WATCHLIST</span><h2>Critical assets</h2></div>
               <span>{elevatedAssets} require monitoring</span>
             </div>
             <div className="asset-list">
               {assets.map((asset) => (
                 <article key={asset.id}>
                   <span className={`asset-state asset-${asset.exposure.toLowerCase()}`}>{asset.exposure}</span>
-                  <div><strong>{asset.name}</strong><small>{asset.type} · {asset.location} · {asset.elevationM == null ? "elevation pending" : `${Math.round(asset.elevationM)} m USGS elevation`}</small><p>{asset.reason}</p></div>
+                  <div><strong>{asset.name}</strong><small>{asset.type} · {asset.location} · {asset.elevationM == null ? "elevation pending" : `${Math.round(asset.elevationM)} m USGS elevation`}{asset.condition ? ` · ${asset.condition} reference condition` : ""}</small><p>{asset.reason}</p><em>{asset.source}{asset.reference ? ` · ${asset.reference}` : ""}</em></div>
                   <span className="criticality">{asset.criticality}</span>
                 </article>
               ))}
             </div>
-            <p className="fixture-note">Asset identities remain clearly marked demonstration fixtures. Their coordinates are mapped against live NWS GeoJSON warnings and USGS elevation samples.</p>
+            <p className="fixture-note">Watchlist identities and coordinates come from official USGS and FHWA reference inventories. Osprey maps them against live hazard evidence; it does not claim live facility or bridge operating status.</p>
           </section>
 
           <section className="alert-panel">
@@ -681,7 +701,7 @@ export default function Home() {
         <div className="decision-overlay" role="presentation">
           <section className="decision-drawer" role="dialog" aria-modal="true" aria-labelledby="decision-title">
             <header>
-              <div><span className="section-kicker">GOVERNED DECISION PACKET · DP-HGX-01</span><h2 id="decision-title">Set the Houston–Galveston operating posture</h2><p>Compare options against the same live weather and representative asset evidence. No task, message or real-world action is released without named human approval.</p></div>
+              <div><span className="section-kicker">GOVERNED DECISION PACKET · DP-HGX-01</span><h2 id="decision-title">Set the Houston–Galveston operating posture</h2><p>Compare options against the same live weather and authoritative priority-asset evidence. No task, message or real-world action is released without named human approval.</p></div>
               <button className="close-button" onClick={() => setDecisionOpen(false)} aria-label="Close decision packet">×</button>
             </header>
             <div className="packet-summary">

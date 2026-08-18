@@ -1,6 +1,7 @@
 import { demoWaterIntelligence, type FloodCategory, type WaterIntelligence } from "@/lib/water-types";
 import { minutesSince, type ConnectorHealth } from "@/lib/source-health";
 import { demoRainfallIntelligence, type RainfallIntelligence, type RainfallPeriod, type RainfallSamplePoint, type RainfallScreening } from "@/lib/rainfall";
+import { demoAssetRegister, priorityAssetPoints, type AssetRegister, type AssetRegisterFeature } from "@/lib/asset-register";
 
 export type RiskLevel = "LOW" | "MODERATE" | "HIGH" | "SEVERE";
 export type AgentId = "weather" | "infrastructure" | "operations" | "communications";
@@ -83,6 +84,10 @@ export interface InfrastructureAsset {
   rainfallScreening: RainfallScreening;
   exposure: "NORMAL" | "MONITOR" | "ELEVATED";
   reason: string;
+  source: string;
+  sourceUpdatedAt: string | null;
+  reference: string | null;
+  condition: string | null;
 }
 
 export interface AgentAssessment {
@@ -124,55 +129,51 @@ export interface IncidentIntelligence {
   weather: WeatherState;
   water: WaterIntelligence;
   rainfall: RainfallIntelligence;
+  assetRegister: AssetRegister;
   sources: ConnectorHealth[];
   assessments: Record<AgentId, AgentAssessment>;
   assets: InfrastructureAsset[];
   timeline: TimelineEvent[];
 }
 
-export const infrastructureAssetFixtures: Omit<InfrastructureAsset, "exposure" | "reason" | "rainfallIn" | "rainfallScreening">[] = [
-  {
-    id: "ASSET-HOSP-01",
-    name: "Galveston Medical Centre",
-    type: "Hospital",
-    criticality: "CRITICAL",
-    vulnerability: "Heat load, coastal flooding and access disruption",
-    location: "Galveston Island",
-    latitude: 29.3013,
-    longitude: -94.7977,
-    elevationM: null,
-    elevationSource: "Unavailable",
-  },
-  {
-    id: "ASSET-PUMP-14",
-    name: "Pump Station 14",
-    type: "Flood control",
-    criticality: "HIGH",
-    vulnerability: "Surface-water flooding above high rainfall thresholds",
-    location: "Southeast Houston",
-    latitude: 29.6743,
-    longitude: -95.2511,
-    elevationM: null,
-    elevationSource: "Unavailable",
-  },
-  {
-    id: "ASSET-ROUTE-45",
-    name: "I-45 Coastal Access",
-    type: "Transport route",
-    criticality: "HIGH",
-    vulnerability: "Wind, standing water and coastal access constraint",
-    location: "Houston–Galveston corridor",
-    latitude: 29.5061,
-    longitude: -95.0892,
-    elevationM: null,
-    elevationSource: "Unavailable",
-  },
-];
+export function rainfallSamplePoints(register: AssetRegister): RainfallSamplePoint[] {
+  return [
+    { id: "AREA-HOUSTON", name: "Houston operational centre", latitude: 29.7604, longitude: -95.3698 },
+    ...priorityAssetPoints(register).map(({ id, name, latitude, longitude }) => ({ id, name, latitude, longitude })),
+  ];
+}
 
-export const rainfallSamplePoints: RainfallSamplePoint[] = [
-  { id: "AREA-HOUSTON", name: "Houston operational centre", latitude: 29.7604, longitude: -95.3698 },
-  ...infrastructureAssetFixtures.map(({ id, name, latitude, longitude }) => ({ id, name, latitude, longitude })),
-];
+function watchAsset(feature: AssetRegisterFeature): Omit<InfrastructureAsset, "exposure" | "reason" | "rainfallIn" | "rainfallScreening"> {
+  const isHospital = feature.category === "HOSPITAL";
+  const type = isHospital
+    ? "Hospital / medical centre"
+    : feature.category === "FIRE_EMS"
+      ? "Fire / EMS station"
+      : feature.category === "LAW_ENFORCEMENT"
+        ? "Law-enforcement facility"
+        : "Public-road bridge";
+  const vulnerability = isHospital
+    ? "Heat load, continuity, flood exposure and access disruption"
+    : feature.category === "BRIDGE"
+      ? "Rainfall, water-level and access disruption; condition is reference context only"
+      : "Emergency-response continuity, flood exposure and access disruption";
+  return {
+    id: feature.id,
+    name: feature.name,
+    type,
+    criticality: isHospital ? "CRITICAL" : "HIGH",
+    vulnerability,
+    location: feature.location,
+    latitude: feature.latitude,
+    longitude: feature.longitude,
+    elevationM: null,
+    elevationSource: "Unavailable",
+    source: feature.source,
+    sourceUpdatedAt: feature.sourceUpdatedAt,
+    reference: feature.reference,
+    condition: feature.condition,
+  };
+}
 
 const clamp = (value: number, minimum: number, maximum: number) =>
   Math.min(maximum, Math.max(minimum, Math.round(value)));
@@ -320,14 +321,15 @@ function assessAssets(
   risk: RiskLevel,
   hazard: string,
   elevations: Record<string, number | null>,
+  assetRegister: AssetRegister,
 ): InfrastructureAsset[] {
   const hazardText = hazard.toLowerCase();
-  return infrastructureAssetFixtures.map((asset) => {
+  return priorityAssetPoints(assetRegister).map(watchAsset).map((asset) => {
     const elevationM = elevations[asset.id] ?? null;
     const intersectingAlert = weather.activeAlerts.find((alert) => pointInAlert(asset.longitude, asset.latitude, alert.geometry));
-    const heatRelevant = hazardText.includes("heat") && asset.id === "ASSET-HOSP-01";
-    const floodRelevant = hazardText.includes("flood") && asset.id !== "ASSET-HOSP-01";
-    const windRelevant = /wind|hurricane|tornado/.test(hazardText) && asset.id === "ASSET-ROUTE-45";
+    const heatRelevant = hazardText.includes("heat") && asset.type.includes("Hospital");
+    const floodRelevant = hazardText.includes("flood");
+    const windRelevant = /wind|hurricane|tornado/.test(hazardText) && (asset.type.includes("Bridge") || asset.type.includes("Fire"));
     const lowElevationFloodExposure = elevationM != null && elevationM <= 4 && /flood|storm surge|hurricane/.test(hazardText);
     const nearestGauge = [...water.riverGauges].sort((a, b) => distanceKm(asset, a) - distanceKm(asset, b))[0];
     const gaugeDistance = nearestGauge ? distanceKm(asset, nearestGauge) : null;
@@ -376,7 +378,8 @@ export function createIncidentIntelligence(
   weather: WeatherState,
   elevations: Record<string, number | null> = {},
   water: WaterIntelligence = demoWaterIntelligence,
-  rainfall: RainfallIntelligence = demoRainfallIntelligence(rainfallSamplePoints),
+  rainfall: RainfallIntelligence = demoRainfallIntelligence(rainfallSamplePoints(demoAssetRegister)),
+  assetRegister: AssetRegister = demoAssetRegister,
 ): IncidentIntelligence {
   const { risk: weatherRiskLevel, hazard } = weatherRisk(weather);
   const waterRiskLevel = waterRisk(water);
@@ -385,7 +388,7 @@ export function createIncidentIntelligence(
   const evidence = evidenceFor(weather);
   const waterEvidence = waterEvidenceFor(water);
   const rainfallEvidence = rainfallEvidenceFor(rainfall);
-  const assessedAssets = assessAssets(weather, water, rainfall, risk, hazard, elevations);
+  const assessedAssets = assessAssets(weather, water, rainfall, risk, hazard, elevations, assetRegister);
   const exposedAssets = assessedAssets.filter((asset) => asset.exposure !== "NORMAL");
   const infrastructureRisk: RiskLevel = exposedAssets.some((asset) => asset.exposure === "ELEVATED")
     ? "HIGH"
@@ -425,6 +428,7 @@ export function createIncidentIntelligence(
     },
     rainfall.sourceHealth,
     ...water.sourceHealth,
+    ...assetRegister.sourceHealth,
     {
       id: "usgs-elevation",
       name: "USGS 3DEP",
@@ -435,9 +439,9 @@ export function createIncidentIntelligence(
       ageMinutes: elevationCount > 0 ? 0 : null,
       lastAttemptAt: weather.fetchedAt,
       lastSuccessAt: elevationCount > 0 ? weather.fetchedAt : null,
-      fallback: "Verified local elevation samples for the demonstration assets",
+      fallback: elevationCount > 0 ? null : "Map geometry and the remaining exposure evidence stay available",
       message: elevationCount > 0
-        ? `${elevationCount} of ${assessedAssets.length} representative assets have elevation context.`
+        ? `${elevationCount} of ${assessedAssets.length} priority assets have elevation context.`
         : "Asset elevation context is unavailable; other exposure evidence remains visible.",
       affects: ["Terrain identify", "Low-elevation sensitivity", "Infrastructure exposure"],
     },
@@ -480,9 +484,9 @@ export function createIncidentIntelligence(
         ...rainfallEvidence,
         ...waterEvidence,
         ...evidence.slice(0, 1),
-        { id: "ASSET-REGISTER-001", label: "Geocoded representative critical-asset register", value: `${assessedAssets.length} assets evaluated · ${spatialAlertCount} warning polygons · ${rainfall.samples.length} MRMS rainfall points · ${water.riverGauges.length + water.coastalStations.length} live water stations · ${elevationCount} USGS elevation samples`, source: "Osprey demonstration fixture + NWS/NOAA/USGS/FEMA", observedAt: rainfall.fetchedAt },
+        { id: "ASSET-REGISTER-001", label: "Authoritative infrastructure reference register", value: `${assetRegister.features.length} mapped reference features · ${assessedAssets.length} priority assets evaluated · ${spatialAlertCount} warning polygons · ${rainfall.samples.length} MRMS rainfall points · ${water.riverGauges.length + water.coastalStations.length} live water stations · ${elevationCount} USGS elevation samples`, source: "USGS / FHWA / BTS / HCFCD + NWS / NOAA / FEMA", observedAt: assetRegister.fetchedAt },
       ],
-      watchFor: ["Pump capacity during heavy rainfall", "Hospital cooling continuity during dangerous heat", "I-45 access constraints"],
+      watchFor: ["Hospital continuity during dangerous heat or flooding", "Emergency-response access constraints", "Fair or poor bridges near rising water or heavy rainfall"],
       affectedAssets: assessedAssets,
     },
     operations: {
@@ -498,7 +502,7 @@ export function createIncidentIntelligence(
         : "No major operational intervention is recommended from the current evidence. Refresh intelligence when conditions change.",
       findings: interventionRequired
         ? ["Confirm accountable owners for elevated assets.", "Check access and continuity arrangements.", "Reassess after the next NWS update."]
-        : ["Maintain the current operating posture.", "Keep the three representative critical assets in view.", "Reassess in 60 minutes or on a new alert."],
+        : ["Maintain the current operating posture.", "Keep the authoritative priority-asset watchlist in view.", "Reassess in 60 minutes or on a new alert."],
       evidence: [
         ...evidence.slice(0, 1),
         ...rainfallEvidence,
@@ -552,6 +556,7 @@ export function createIncidentIntelligence(
     weather,
     water,
     rainfall,
+    assetRegister,
     sources,
     assessments,
     assets: assessedAssets,
@@ -560,7 +565,7 @@ export function createIncidentIntelligence(
       { id: "TL-001-RAIN", occurredAt: timeAt(250), actor: "MRMS rainfall adapter", title: "Radar-estimated rainfall refreshed", detail: `${rainfall.samples.length} operational points · ${rainfall.periods.length} accumulation periods · ${rainfall.sourceHealth.status.toLowerCase()} source state.`, evidenceIds: rainfallEvidence.map((item) => item.id) },
       { id: "TL-001-WATER", occurredAt: timeAt(500), actor: "Water adapters", title: "River, coastal and flood-zone intelligence refreshed", detail: `${water.riverGauges.length} NOAA/USGS gauges · ${water.coastalStations.length} NOAA coastal stations · FEMA overlay ${water.floodZoneStatus.toLowerCase()}.`, evidenceIds: waterEvidence.map((item) => item.id) },
       { id: "TL-002", occurredAt: timeAt(1000), actor: "Weather Agent", title: "Weather assessment completed", detail: `${weatherRiskLevel} risk · ${weatherConfidence}% confidence · ${hazard}.`, evidenceIds: evidence.map((item) => item.id) },
-      { id: "TL-003", occurredAt: timeAt(2000), actor: "Infrastructure Agent", title: "Spatial exposure assessed", detail: `${exposedAssets.length} of ${assessedAssets.length} geocoded assets require monitoring across weather, rainfall, river and coastal evidence.`, evidenceIds: ["ASSET-REGISTER-001", ...rainfallEvidence.map((item) => item.id), ...waterEvidence.slice(0, 2).map((item) => item.id)] },
+      { id: "TL-003", occurredAt: timeAt(2000), actor: "Infrastructure Agent", title: "Spatial exposure assessed", detail: `${assetRegister.features.length} authoritative reference features mapped; ${exposedAssets.length} of ${assessedAssets.length} priority assets require monitoring across weather, rainfall, river and coastal evidence.`, evidenceIds: ["ASSET-REGISTER-001", ...rainfallEvidence.map((item) => item.id), ...waterEvidence.slice(0, 2).map((item) => item.id)] },
       { id: "TL-004", occurredAt: timeAt(3000), actor: "Operations Agent", title: interventionRequired ? "Reversible preparation proposed" : "Monitoring posture recommended", detail: assessments.operations.summary, evidenceIds: ["INFRA-ASSESS-001"] },
       { id: "TL-005", occurredAt: timeAt(4000), actor: "Communications Agent", title: assessments.communications.headline, detail: "No message or external effect has been released.", evidenceIds: ["OPS-RECOMMEND-001"] },
     ],

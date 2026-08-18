@@ -1,11 +1,10 @@
-import { infrastructureAssetFixtures } from "@/lib/intelligence";
-
 const USGS_ENDPOINT = "https://epqs.nationalmap.gov/v1/json";
-const CACHED_USGS_SAMPLES: Record<string, number> = {
-  "ASSET-HOSP-01": 1.767987609,
-  "ASSET-PUMP-14": 9.195146561,
-  "ASSET-ROUTE-45": 6.559643269,
-};
+
+export interface ElevationPoint {
+  id: string;
+  latitude: number;
+  longitude: number;
+}
 
 function readElevation(payload: unknown): number | null {
   if (!payload || typeof payload !== "object") return null;
@@ -41,14 +40,14 @@ export async function fetchPointElevation(longitude: number, latitude: number) {
   return readElevation(await response.json());
 }
 
-export async function fetchAssetElevations(): Promise<Record<string, number | null>> {
+export async function fetchAssetElevations(points: ElevationPoint[]): Promise<Record<string, number | null>> {
   const samples = await Promise.all(
-    infrastructureAssetFixtures.map(async (asset) => {
+    points.map(async (asset) => {
       try {
         const liveSample = await fetchPointElevation(asset.longitude, asset.latitude);
-        return [asset.id, liveSample ?? CACHED_USGS_SAMPLES[asset.id] ?? null] as const;
+        return [asset.id, liveSample] as const;
       } catch {
-        return [asset.id, CACHED_USGS_SAMPLES[asset.id] ?? null] as const;
+        return [asset.id, null] as const;
       }
     }),
   );

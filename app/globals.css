@@ -100,7 +100,19 @@ button { cursor: pointer; }
 .water-ribbon > div > strong { margin-top: 7px; font: 500 20px Georgia, serif; }
 .water-ribbon > div > small { max-width: 230px; margin-top: 4px; overflow: hidden; color: #73847e; font-size: 9px; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
 
-.water-depth-panel, .rainfall-depth-panel { margin: 28px 36px 0; }
+.water-depth-panel, .rainfall-depth-panel, .asset-register-panel { margin: 28px 36px 0; }
+.asset-register-summary { margin-top: 14px; display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); border-top: 1px solid var(--line); border-left: 1px solid var(--line); background: #fff; }
+.asset-register-summary article { min-width: 0; padding: 16px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.asset-register-summary span, .asset-register-summary strong, .asset-register-summary small { display: block; }
+.asset-register-summary span { color: #6f817a; font-size: 8px; font-weight: 740; letter-spacing: .11em; }
+.asset-register-summary strong { margin-top: 8px; color: #244f42; font: 500 26px Georgia, serif; }
+.asset-register-summary small { min-height: 28px; margin-top: 5px; color: #7e8b85; font-size: 8px; line-height: 1.45; }
+.asset-register-boundary { margin-top: 10px; padding: 14px 16px; display: grid; grid-template-columns: 175px minmax(0,1fr) 245px; gap: 18px; align-items: center; color: #31584c; border: 1px solid #cadbd4; background: #eef5f1; }
+.asset-register-boundary > span { align-self: start; color: #2f745e; font-size: 8px; font-weight: 760; letter-spacing: .12em; }
+.asset-register-boundary > span i { width: 6px; height: 6px; margin-right: 7px; display: inline-block; border-radius: 50%; background: #d69434; box-shadow: 0 0 0 3px rgba(214,148,52,.13); }
+.asset-register-boundary strong { display: block; font: 500 15px Georgia, serif; }
+.asset-register-boundary p { margin: 5px 0 0; color: #61766f; font-size: 10px; line-height: 1.5; }
+.asset-register-boundary > small { padding-left: 16px; color: #697d76; border-left: 1px solid #c8d8d1; font: 8px/1.65 var(--font-geist-mono); }
 .water-health { padding: 7px 9px; color: #596f68; border: 1px solid #d6e1dd; background: #fff; font-size: 9px; font-weight: 730; letter-spacing: .09em; }
 .water-health i { width: 6px; height: 6px; margin-right: 7px; display: inline-block; border-radius: 50%; background: #d89f3d; }
 .water-health-live i { background: var(--green); }
@@ -304,6 +316,7 @@ button { cursor: pointer; }
 .asset-list strong { font-size: 13px; }
 .asset-list small { margin-top: 4px; color: #7a8580; font-size: 10px; }
 .asset-list p { margin: 8px 0 0; color: #65716c; font-size: 11px; line-height: 1.45; }
+.asset-list em { margin-top: 7px; display: block; color: #89938e; font: normal 8px/1.4 var(--font-geist-mono); }
 .criticality { color: #7d8983; font-size: 9px; font-weight: 730; letter-spacing: .09em; }
 .fixture-note { margin: 0; padding: 12px 18px; color: #856324; background: #faf4e8; font-size: 9px; line-height: 1.45; }
 .alert-list article { padding: 17px 19px; border-bottom: 1px solid var(--line); }
@@ -500,6 +513,7 @@ button { cursor: pointer; }
 .legend-high { background: #de5b36; }
 .legend-medium { background: #dca542; }
 .legend-rainfall { background: linear-gradient(135deg,#62b3c3,#2e6f91 55%,#d69247); }
+.legend-infrastructure { background: linear-gradient(135deg,#97536f 0 33%,#d78f32 33% 66%,#3f8477 66%); }
 .legend-water { background: #55938c; }
 .legend-normal { background: #65b889; }
 .legend-terrain { background: linear-gradient(135deg, #c7a462 0 50%, #274b3e 50%); }
@@ -514,6 +528,10 @@ button { cursor: pointer; }
 .context-layer-controls button i { width: 6px; height: 6px; border-radius: 50%; background: #bdc8c3; }
 .context-layer-controls button:hover, .context-layer-controls .context-active { color: #14372e; border-color: #8fb5a7; background: #e8f2ed; }
 .context-layer-controls .context-active i { background: #3e966f; box-shadow: 0 0 0 3px rgba(62,150,111,.12); }
+.register-layer-controls { background: #f4f7f4; }
+.register-layer-controls button { justify-content: space-between; }
+.register-layer-controls button i { margin-right: auto; }
+.register-layer-controls button b { color: #2f6754; font: 8px var(--font-geist-mono); }
 .selected-feature-card { padding: 19px 18px; }
 .selected-feature-type { display: flex; align-items: center; gap: 7px; color: #2e765b; font-size: 9px; font-weight: 750; letter-spacing: .1em; text-transform: uppercase; }
 .selected-feature-type i { width: 7px; height: 7px; display: block; border: 2px solid #fff; border-radius: 50%; background: #3f9a72; box-shadow: 0 0 0 1px #3f9a72; }
@@ -552,6 +570,7 @@ button { cursor: pointer; }
 
 @media (max-width: 1180px) {
   .source-health-grid { grid-template-columns: repeat(3,minmax(0,1fr)); }
+  .asset-register-summary { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .rainfall-summary-grid { grid-template-columns: repeat(3,minmax(0,1fr)); }
   .rainfall-point-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .forecast-control { grid-template-columns: minmax(220px,.9fr) minmax(260px,1.2fr) minmax(260px,1fr); }
@@ -600,6 +619,8 @@ button { cursor: pointer; }
   .fema-freshness-note > small { grid-column: 1 / -1; padding: 9px 0 0; border-top: 1px solid #c6d9de; border-left: 0; }
   .rainfall-boundary-note { grid-template-columns: 130px 1fr; }
   .rainfall-boundary-note > small { grid-column: 1 / -1; padding: 9px 0 0; border-top: 1px solid #c6d9de; border-left: 0; }
+  .asset-register-boundary { grid-template-columns: 150px 1fr; }
+  .asset-register-boundary > small { grid-column: 1 / -1; padding: 9px 0 0; border-top: 1px solid #c8d8d1; border-left: 0; }
   .feature-inspector { height: auto; min-height: 400px; border-top: 1px solid var(--line); border-left: 0; }
   .feature-inspector > footer { margin-top: 0; }
   .source-health-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
@@ -629,7 +650,7 @@ button { cursor: pointer; }
   .condition { grid-column: 1 / -1; border-top: 1px solid var(--line); border-right: 0 !important; }
   .shared-state, .agent-section, .operations-grid, .timeline-panel { margin-left: 18px; margin-right: 18px; }
   .source-health-panel { margin-left: 18px; margin-right: 18px; }
-  .water-depth-panel, .rainfall-depth-panel { margin-left: 18px; margin-right: 18px; }
+  .water-depth-panel, .rainfall-depth-panel, .asset-register-panel { margin-left: 18px; margin-right: 18px; }
   .threshold-cache-note { grid-template-columns: 1fr; gap: 8px; }
   .threshold-cache-note > small { grid-column: auto; }
   .fema-freshness-note { grid-template-columns: 1fr; gap: 8px; }
@@ -637,6 +658,9 @@ button { cursor: pointer; }
   .rainfall-summary-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .rainfall-boundary-note { grid-template-columns: 1fr; gap: 8px; }
   .rainfall-boundary-note > small { grid-column: auto; }
+  .asset-register-summary { grid-template-columns: 1fr 1fr; }
+  .asset-register-boundary { grid-template-columns: 1fr; gap: 8px; }
+  .asset-register-boundary > small { grid-column: auto; }
   .rainfall-point-grid { grid-template-columns: 1fr; }
   .evidence-graph, .action-panel { margin-left: 18px; margin-right: 18px; }
   .operational-workspace { margin-left: 18px; margin-right: 18px; }

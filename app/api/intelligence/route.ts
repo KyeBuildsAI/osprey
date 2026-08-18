@@ -3,18 +3,22 @@ import { fetchHoustonWeather } from "@/lib/nws";
 import { fetchRainfallIntelligence } from "@/lib/rainfall";
 import { fetchAssetElevations } from "@/lib/usgs";
 import { fetchWaterIntelligence } from "@/lib/water";
+import { fetchAssetRegister, priorityAssetPoints } from "@/lib/asset-register";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
+    const assetRegister = await fetchAssetRegister();
+    const priorityAssets = priorityAssetPoints(assetRegister);
+    const rainfallPoints = rainfallSamplePoints(assetRegister);
     const [weather, elevations, water, rainfall] = await Promise.all([
       fetchHoustonWeather(),
-      fetchAssetElevations(),
+      fetchAssetElevations(priorityAssets),
       fetchWaterIntelligence(),
-      fetchRainfallIntelligence(rainfallSamplePoints),
+      fetchRainfallIntelligence(rainfallPoints),
     ]);
-    return Response.json(createIncidentIntelligence(weather, elevations, water, rainfall), {
+    return Response.json(createIncidentIntelligence(weather, elevations, water, rainfall, assetRegister), {
       headers: { "Cache-Control": "no-store" },
     });
   } catch (error) {
