@@ -2,6 +2,7 @@ import { demoWaterIntelligence, type FloodCategory, type WaterIntelligence } fro
 import { minutesSince, type ConnectorHealth } from "@/lib/source-health";
 import { demoRainfallIntelligence, type RainfallIntelligence, type RainfallPeriod, type RainfallSamplePoint, type RainfallScreening } from "@/lib/rainfall";
 import { demoAssetRegister, priorityAssetPoints, type AssetRegister, type AssetRegisterFeature } from "@/lib/asset-register";
+import { demoOperationalImpacts, type OperationalImpactIntelligence } from "@/lib/operational-impacts";
 
 export type RiskLevel = "LOW" | "MODERATE" | "HIGH" | "SEVERE";
 export type AgentId = "weather" | "infrastructure" | "operations" | "communications";
@@ -130,6 +131,7 @@ export interface IncidentIntelligence {
   water: WaterIntelligence;
   rainfall: RainfallIntelligence;
   assetRegister: AssetRegister;
+  operationalImpacts: OperationalImpactIntelligence;
   sources: ConnectorHealth[];
   assessments: Record<AgentId, AgentAssessment>;
   assets: InfrastructureAsset[];
@@ -282,6 +284,28 @@ function rainfallEvidenceFor(rainfall: RainfallIntelligence): EvidenceReference[
   }];
 }
 
+function operationalImpactEvidenceFor(operationalImpacts: OperationalImpactIntelligence): EvidenceReference[] {
+  const rank = { LOW: 0, MODERATE: 1, HIGH: 2 } as const;
+  const lead = operationalImpacts.impacts
+    .filter((impact) => impact.status !== "RESOLVED")
+    .sort((first, second) => rank[second.severity] - rank[first.severity])[0];
+  if (!lead) return [];
+  return [{
+    id: "TRANSTAR-IMPACT-001",
+    label: lead.location,
+    value: `${lead.status.toLowerCase()} · ${lead.title.split(" · ").at(-1)}${lead.lanesAffected ? ` · ${lead.lanesAffected}` : ""}${lead.nearbyInfrastructure.length > 0 ? ` · ${lead.nearbyInfrastructure.length} mapped infrastructure records within 3 km` : ""}`,
+    source: lead.source,
+    observedAt: lead.observedAt,
+  }];
+}
+
+function operationalImpactRisk(operationalImpacts: OperationalImpactIntelligence): RiskLevel {
+  const active = operationalImpacts.impacts.filter((impact) => impact.status !== "RESOLVED");
+  if (active.some((impact) => impact.severity === "HIGH" && ["CLOSED", "VERIFIED"].includes(impact.status))) return "HIGH";
+  if (active.some((impact) => ["VERIFIED", "RESTRICTED", "CLOSED"].includes(impact.status))) return "MODERATE";
+  return "LOW";
+}
+
 function riskMax(...risks: RiskLevel[]): RiskLevel {
   const order: RiskLevel[] = ["LOW", "MODERATE", "HIGH", "SEVERE"];
   return [...risks].sort((a, b) => order.indexOf(b) - order.indexOf(a))[0] ?? "LOW";
@@ -322,6 +346,7 @@ function assessAssets(
   hazard: string,
   elevations: Record<string, number | null>,
   assetRegister: AssetRegister,
+  operationalImpacts: OperationalImpactIntelligence,
 ): InfrastructureAsset[] {
   const hazardText = hazard.toLowerCase();
   return priorityAssetPoints(assetRegister).map(watchAsset).map((asset) => {
@@ -342,8 +367,10 @@ function assessAssets(
     const rainfallScreening = rainfallSample?.screening ?? "UNAVAILABLE";
     const rainfallElevated = rainfallScreening === "ELEVATED";
     const rainfallMonitor = rainfallScreening === "MONITOR";
-    const relevant = Boolean(intersectingAlert) || lowElevationFloodExposure || heatRelevant || floodRelevant || windRelevant || gaugeElevated || coastalElevated || rainfallMonitor || rainfallElevated;
-    const exposure = rainfallElevated || (intersectingAlert || lowElevationFloodExposure || gaugeElevated || coastalElevated) && ["HIGH", "SEVERE"].includes(risk)
+    const relatedImpact = operationalImpacts.impacts.find((impact) => impact.status !== "RESOLVED" && impact.nearbyInfrastructure.some((nearby) => nearby.id === asset.id));
+    const impactElevated = Boolean(relatedImpact && relatedImpact.severity === "HIGH" && ["CLOSED", "VERIFIED"].includes(relatedImpact.status));
+    const relevant = Boolean(intersectingAlert) || lowElevationFloodExposure || heatRelevant || floodRelevant || windRelevant || gaugeElevated || coastalElevated || rainfallMonitor || rainfallElevated || Boolean(relatedImpact);
+    const exposure = rainfallElevated || impactElevated || (intersectingAlert || lowElevationFloodExposure || gaugeElevated || coastalElevated) && ["HIGH", "SEVERE"].includes(risk)
       ? "ELEVATED"
       : relevant || risk === "MODERATE"
         ? "MONITOR"
@@ -357,6 +384,8 @@ function assessAssets(
       exposure,
       reason: intersectingAlert
         ? `Located inside the live NWS ${intersectingAlert.event} polygon.`
+        : relatedImpact
+          ? `${relatedImpact.status.toLowerCase()} Houston TranStar ${relatedImpact.kind.replaceAll("_", " ").toLowerCase()} is ${relatedImpact.nearbyInfrastructure.find((nearby) => nearby.id === asset.id)?.distanceKm ?? "within 3"} km away at ${relatedImpact.location}.`
         : rainfallElevated || rainfallMonitor
           ? `${rainfallIn[1] ?? "—"} in / 1h and ${rainfallIn[24] ?? "—"} in / 24h at the NOAA MRMS grid cell crosses Osprey's ${rainfallScreening.toLowerCase()} screening threshold.`
         : gaugeElevated && nearestGauge
@@ -380,15 +409,18 @@ export function createIncidentIntelligence(
   water: WaterIntelligence = demoWaterIntelligence,
   rainfall: RainfallIntelligence = demoRainfallIntelligence(rainfallSamplePoints(demoAssetRegister)),
   assetRegister: AssetRegister = demoAssetRegister,
+  operationalImpacts: OperationalImpactIntelligence = demoOperationalImpacts,
 ): IncidentIntelligence {
   const { risk: weatherRiskLevel, hazard } = weatherRisk(weather);
   const waterRiskLevel = waterRisk(water);
   const rainfallRiskLevel = rainfallRisk(rainfall);
-  const risk = riskMax(weatherRiskLevel, waterRiskLevel, rainfallRiskLevel);
+  const operationalRiskLevel = operationalImpactRisk(operationalImpacts);
+  const risk = riskMax(weatherRiskLevel, waterRiskLevel, rainfallRiskLevel, operationalRiskLevel);
   const evidence = evidenceFor(weather);
   const waterEvidence = waterEvidenceFor(water);
   const rainfallEvidence = rainfallEvidenceFor(rainfall);
-  const assessedAssets = assessAssets(weather, water, rainfall, risk, hazard, elevations, assetRegister);
+  const operationalImpactEvidence = operationalImpactEvidenceFor(operationalImpacts);
+  const assessedAssets = assessAssets(weather, water, rainfall, risk, hazard, elevations, assetRegister, operationalImpacts);
   const exposedAssets = assessedAssets.filter((asset) => asset.exposure !== "NORMAL");
   const infrastructureRisk: RiskLevel = exposedAssets.some((asset) => asset.exposure === "ELEVATED")
     ? "HIGH"
@@ -397,6 +429,9 @@ export function createIncidentIntelligence(
       : "LOW";
   const interventionRequired = ["HIGH", "SEVERE"].includes(risk) || infrastructureRisk === "HIGH";
   const internalBriefing = risk !== "LOW" || exposedAssets.length > 0;
+  const activeImpacts = operationalImpacts.impacts.filter((impact) => impact.status !== "RESOLVED");
+  const confirmedImpacts = activeImpacts.filter((impact) => ["VERIFIED", "RESTRICTED", "CLOSED"].includes(impact.status));
+  const linkedImpacts = activeImpacts.filter((impact) => impact.nearbyInfrastructure.length > 0);
   const timestamp = Math.max(new Date(weather.fetchedAt).getTime(), new Date(water.fetchedAt).getTime(), new Date(rainfall.fetchedAt).getTime());
   const timeAt = (offset: number) => new Date(timestamp + offset).toISOString();
   const weatherConfidence = clamp((weather.isLive ? 94 : 82) - (weather.observedAt ? 0 : 10), 65, 97);
@@ -429,6 +464,7 @@ export function createIncidentIntelligence(
     rainfall.sourceHealth,
     ...water.sourceHealth,
     ...assetRegister.sourceHealth,
+    operationalImpacts.sourceHealth,
     {
       id: "usgs-elevation",
       name: "USGS 3DEP",
@@ -471,22 +507,26 @@ export function createIncidentIntelligence(
     infrastructure: {
       agent: "infrastructure",
       label: "Infrastructure",
-      remit: "Critical assets, rainfall, river, coastal and weather exposure",
+      remit: "Critical assets, verified disruptions, rainfall, river, coastal and weather exposure",
       state: exposedAssets.length === 0 ? "CLEAR" : `${exposedAssets.length} TO WATCH`,
       risk: infrastructureRisk,
       confidence: infrastructureConfidence,
       headline: exposedAssets.length === 0 ? "Water and asset thresholds clear" : `${exposedAssets.length} assets warrant monitoring`,
       summary: exposedAssets.length === 0
-        ? `${water.riverGauges.length} river gauges and ${water.coastalStations.length} coastal stations do not currently intersect a declared asset threshold.`
-        : `${exposedAssets.map((asset) => asset.name).join(" and ")} remain exposed to the current hazard profile.`,
-      findings: assessedAssets.map((asset) => `${asset.name}: ${asset.exposure.toLowerCase()} — ${asset.reason}`),
+        ? `${activeImpacts.length} transport impacts are visible, but no priority asset currently crosses a declared exposure threshold.`
+        : `${exposedAssets.slice(0, 3).map((asset) => asset.name).join(", ")}${exposedAssets.length > 3 ? ` and ${exposedAssets.length - 3} more` : ""} remain exposed to the current hazard profile.`,
+      findings: [
+        `${confirmedImpacts.length} verified, restricted or closed transport impacts · ${linkedImpacts.length} within 3 km of mapped infrastructure.`,
+        ...assessedAssets.map((asset) => `${asset.name}: ${asset.exposure.toLowerCase()} — ${asset.reason}`),
+      ],
       evidence: [
+        ...operationalImpactEvidence,
         ...rainfallEvidence,
         ...waterEvidence,
         ...evidence.slice(0, 1),
         { id: "ASSET-REGISTER-001", label: "Authoritative infrastructure reference register", value: `${assetRegister.features.length} mapped reference features · ${assessedAssets.length} priority assets evaluated · ${spatialAlertCount} warning polygons · ${rainfall.samples.length} MRMS rainfall points · ${water.riverGauges.length + water.coastalStations.length} live water stations · ${elevationCount} USGS elevation samples`, source: "USGS / FHWA / BTS / HCFCD + NWS / NOAA / FEMA", observedAt: assetRegister.fetchedAt },
       ],
-      watchFor: ["Hospital continuity during dangerous heat or flooding", "Emergency-response access constraints", "Fair or poor bridges near rising water or heavy rainfall"],
+      watchFor: ["A reported incident becoming verified or closed", "Hospital and emergency-response access constraints", "Fair or poor bridges near a verified disruption or rising water"],
       affectedAssets: assessedAssets,
     },
     operations: {
@@ -505,11 +545,12 @@ export function createIncidentIntelligence(
         : ["Maintain the current operating posture.", "Keep the authoritative priority-asset watchlist in view.", "Reassess in 60 minutes or on a new alert."],
       evidence: [
         ...evidence.slice(0, 1),
+        ...operationalImpactEvidence,
         ...rainfallEvidence,
         ...waterEvidence.slice(0, 2),
         { id: "INFRA-ASSESS-001", label: "Infrastructure assessment", value: `${exposedAssets.length} assets require monitoring`, source: "Osprey Infrastructure Agent", observedAt: timeAt(1000) },
       ],
-      watchFor: ["A new severe alert", "An asset moving to elevated exposure", "Material forecast deterioration"],
+      watchFor: ["A new verified closure", "An asset moving to elevated exposure", "Material forecast or transport deterioration"],
       requiresApproval: interventionRequired,
     },
     communications: {
@@ -557,6 +598,7 @@ export function createIncidentIntelligence(
     water,
     rainfall,
     assetRegister,
+    operationalImpacts,
     sources,
     assessments,
     assets: assessedAssets,
@@ -564,6 +606,7 @@ export function createIncidentIntelligence(
       { id: "TL-001", occurredAt: timeAt(0), actor: "NWS adapter", title: "Live weather intelligence refreshed", detail: `${evidence.length} normalized evidence records added to shared incident state.`, evidenceIds: evidence.map((item) => item.id) },
       { id: "TL-001-RAIN", occurredAt: timeAt(250), actor: "MRMS rainfall adapter", title: "Radar-estimated rainfall refreshed", detail: `${rainfall.samples.length} operational points · ${rainfall.periods.length} accumulation periods · ${rainfall.sourceHealth.status.toLowerCase()} source state.`, evidenceIds: rainfallEvidence.map((item) => item.id) },
       { id: "TL-001-WATER", occurredAt: timeAt(500), actor: "Water adapters", title: "River, coastal and flood-zone intelligence refreshed", detail: `${water.riverGauges.length} NOAA/USGS gauges · ${water.coastalStations.length} NOAA coastal stations · FEMA overlay ${water.floodZoneStatus.toLowerCase()}.`, evidenceIds: waterEvidence.map((item) => item.id) },
+      { id: "TL-001-IMPACT", occurredAt: timeAt(750), actor: "Houston TranStar adapter", title: "Operational impacts refreshed", detail: `${activeImpacts.length} active or recently verified disruptions · ${confirmedImpacts.length} confirmed restrictions or closures · ${linkedImpacts.length} close to mapped infrastructure.`, evidenceIds: operationalImpactEvidence.map((item) => item.id) },
       { id: "TL-002", occurredAt: timeAt(1000), actor: "Weather Agent", title: "Weather assessment completed", detail: `${weatherRiskLevel} risk · ${weatherConfidence}% confidence · ${hazard}.`, evidenceIds: evidence.map((item) => item.id) },
       { id: "TL-003", occurredAt: timeAt(2000), actor: "Infrastructure Agent", title: "Spatial exposure assessed", detail: `${assetRegister.features.length} authoritative reference features mapped; ${exposedAssets.length} of ${assessedAssets.length} priority assets require monitoring across weather, rainfall, river and coastal evidence.`, evidenceIds: ["ASSET-REGISTER-001", ...rainfallEvidence.map((item) => item.id), ...waterEvidence.slice(0, 2).map((item) => item.id)] },
       { id: "TL-004", occurredAt: timeAt(3000), actor: "Operations Agent", title: interventionRequired ? "Reversible preparation proposed" : "Monitoring posture recommended", detail: assessments.operations.summary, evidenceIds: ["INFRA-ASSESS-001"] },

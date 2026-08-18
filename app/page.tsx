@@ -189,7 +189,7 @@ export default function Home() {
     };
   }, [refreshFemaInBackground, refreshIntelligence]);
 
-  const { incident, weather, water, rainfall, assetRegister, assessments, assets, timeline } = intelligence;
+  const { incident, weather, water, rainfall, assetRegister, operationalImpacts, assessments, assets, timeline } = intelligence;
   const activeAssessment = assessments[openAgent];
   const elevatedAssets = assets.filter((asset) => asset.exposure !== "NORMAL").length;
   const activeHazard = hazardViews.find((hazard) => hazard.id === activeHazardId) ?? hazardViews[0];
@@ -202,6 +202,17 @@ export default function Home() {
     return [period, values.length > 0 ? Math.max(...values) : null];
   })) as Record<(typeof rainfall.periods)[number], number | null>;
   const rainfallWatchPoints = rainfall.samples.filter((sample) => ["MONITOR", "ELEVATED"].includes(sample.screening)).length;
+  const rainfallCoreSamples = rainfall.samples.filter((sample) => !sample.id.startsWith("TRANSTAR-"));
+  const rainfallImpactSamples = rainfall.samples.length - rainfallCoreSamples.length;
+  const activeOperationalImpacts = operationalImpacts.impacts.filter((impact) => impact.status !== "RESOLVED");
+  const confirmedOperationalImpacts = activeOperationalImpacts.filter((impact) => ["VERIFIED", "RESTRICTED", "CLOSED"].includes(impact.status));
+  const closureImpacts = activeOperationalImpacts.filter((impact) => ["RESTRICTED", "CLOSED"].includes(impact.status));
+  const linkedOperationalImpacts = activeOperationalImpacts.filter((impact) => impact.nearbyInfrastructure.length > 0);
+  const displayedOperationalImpacts = [...activeOperationalImpacts].sort((first, second) => {
+    const statusRank = { CLOSED: 4, RESTRICTED: 3, VERIFIED: 2, REPORTED: 1, RESOLVED: 0 };
+    const severityRank = { HIGH: 2, MODERATE: 1, LOW: 0 };
+    return statusRank[second.status] - statusRank[first.status] || severityRank[second.severity] - severityRank[first.severity];
+  }).slice(0, 10);
   const forecastFrames = weather.forecastFrames.length > 0 ? weather.forecastFrames : [];
   const selectedForecastFrame = forecastFrames[Math.min(forecastFrameIndex, Math.max(0, forecastFrames.length - 1))] ?? null;
   const firstForecastTime = forecastFrames[0]?.startTime ?? weather.fetchedAt;
@@ -357,6 +368,7 @@ export default function Home() {
               alerts={weather.activeAlerts}
               assets={assets}
               assetRegister={assetRegister}
+              operationalImpacts={operationalImpacts}
               water={water}
               rainfall={rainfall}
               layer={mapLayer}
@@ -405,6 +417,47 @@ export default function Home() {
           </div>
         </section>
 
+        <section className="operational-impact-panel" aria-label="Live reported and verified transport disruptions">
+          <div className="section-heading">
+            <div><span className="section-kicker">LIVE OPERATIONAL IMPACTS v1</span><h2>From possible exposure to reported disruption</h2></div>
+            <span className={`water-health ${operationalImpacts.sourceHealth.status === "LIVE" ? "water-health-live" : "water-health-partial"}`}><i />{operationalImpacts.sourceHealth.status} HOUSTON TRANSTAR</span>
+          </div>
+          {operationalImpacts.warnings.length > 0 && <div className="water-notices">{operationalImpacts.warnings.map((warning) => <span key={warning}>{warning}</span>)}</div>}
+          <div className="operational-impact-summary">
+            <article><span>ACTIVE / RECENT</span><strong>{activeOperationalImpacts.length}</strong><small>Resolved records are retained for provenance but hidden from the map</small></article>
+            <article><span>CONFIRMED IMPACTS</span><strong>{confirmedOperationalImpacts.length}</strong><small>Verified incidents, restrictions and closures</small></article>
+            <article><span>RESTRICTED / CLOSED</span><strong>{closureImpacts.length}</strong><small>Active lane restrictions or total closures</small></article>
+            <article><span>NEAR INFRASTRUCTURE</span><strong>{linkedOperationalImpacts.length}</strong><small>Within 3 km of an official mapped asset or corridor</small></article>
+          </div>
+          <div className="impact-status-key" aria-label="Operational impact confidence states">
+            <span><b className="impact-reported" />REPORTED<small>Authority report received; not yet verified as a closure</small></span>
+            <span><b className="impact-verified" />VERIFIED<small>TranStar operator verification is present</small></span>
+            <span><b className="impact-restricted" />RESTRICTED<small>An active lane restriction is reported</small></span>
+            <span><b className="impact-closed" />CLOSED<small>A total closure is reported active</small></span>
+          </div>
+          {activeOperationalImpacts.length > 0 ? (
+            <div className="operational-impact-list">
+              {displayedOperationalImpacts.map((impact) => (
+                <article key={impact.id} className={`operational-impact-card impact-card-${impact.status.toLowerCase()}`}>
+                  <header><span>{impact.kind.replaceAll("_", " ")}</span><b>{impact.status}</b></header>
+                  <h3>{impact.location}</h3>
+                  <p>{impact.title.split(" · ").at(-1)} · {impact.description}</p>
+                  <dl>
+                    {impact.lanesAffected && <div><dt>Lanes</dt><dd>{impact.lanesAffected}</dd></div>}
+                    {impact.duration && <div><dt>Duration</dt><dd>{impact.duration}</dd></div>}
+                    <div><dt>Rainfall</dt><dd>{impact.rainfallIn[1] ?? "—"} in / 1h · {impact.rainfallIn[24] ?? "—"} in / 24h · {impact.rainfallScreening.toLowerCase()}</dd></div>
+                    <div><dt>Infrastructure</dt><dd>{impact.nearbyInfrastructure.length > 0 ? impact.nearbyInfrastructure.map((nearby) => `${nearby.name} (${nearby.distanceKm} km)`).join(" · ") : "No official register feature within 3 km"}</dd></div>
+                  </dl>
+                  <footer><span>{impact.source}</span><small>Updated {formatTime(impact.observedAt, true)} CT</small></footer>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="no-operational-impacts"><i>✓</i><strong>No active mapped transport disruptions</strong><p>Osprey has not inferred an impact from hazard exposure alone.</p></div>
+          )}
+          <p className="impact-source-boundary">Showing up to 10 highest-certainty or highest-impact active records; all active records remain mapped. Operational awareness only. Houston TranStar’s published status is reproduced without inferring road passability beyond the stated incident or closure. “Active” scheduled work is separated from a confirmed total closure. Alternative routing is intentionally deferred until a verified routing source is connected. Obtain TxDOT permission before broader redistribution of TranStar content.</p>
+        </section>
+
         <section className="rainfall-depth-panel" aria-label="Radar-estimated rainfall accumulation and runoff screening">
           <div className="section-heading">
             <div><span className="section-kicker">RAINFALL &amp; RUNOFF SCREENING v1</span><h2>Radar accumulation translated into asset context</h2></div>
@@ -415,7 +468,7 @@ export default function Home() {
             {rainfall.periods.map((period) => (
               <div key={period}><span>MAXIMUM {period}H</span><strong>{rainfallMaxByPeriod[period] == null ? "—" : `${rainfallMaxByPeriod[period]?.toFixed(2)} in`}</strong><small>{rainfall.validAt[period] ? `Valid ${formatTime(rainfall.validAt[period]!, true)} CT` : "Valid time pending"}</small></div>
             ))}
-            <div><span>POINTS TO WATCH</span><strong>{rainfallWatchPoints}</strong><small>{rainfall.samples.length} operational grid cells screened</small></div>
+            <div><span>POINTS TO WATCH</span><strong>{rainfallWatchPoints}</strong><small>{rainfallCoreSamples.length} centre / asset cells · {rainfallImpactSamples} disruption cells</small></div>
           </div>
           <div className="rainfall-boundary-note">
             <span><i />INTERPRETATION BOUNDARY</span>
@@ -423,7 +476,7 @@ export default function Home() {
             <small>Osprey screening begins at 0.5 in / 1h, 1 in / 3h, 1.5 in / 6h or 2 in / 24h. These are transparent triage rules, not official warning thresholds.</small>
           </div>
           <div className="rainfall-point-grid">
-            {rainfall.samples.map((sample) => (
+            {rainfallCoreSamples.map((sample) => (
               <article key={sample.id} className={`rainfall-point-card rainfall-screen-${sample.screening.toLowerCase()}`}>
                 <header><span>{sample.id}</span><b>{sample.screening}</b></header>
                 <h3>{sample.name}</h3>

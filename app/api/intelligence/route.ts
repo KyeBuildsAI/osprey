@@ -4,21 +4,26 @@ import { fetchRainfallIntelligence } from "@/lib/rainfall";
 import { fetchAssetElevations } from "@/lib/usgs";
 import { fetchWaterIntelligence } from "@/lib/water";
 import { fetchAssetRegister, priorityAssetPoints } from "@/lib/asset-register";
+import { enrichOperationalImpacts, fetchOperationalImpacts, operationalImpactSamplePoints } from "@/lib/operational-impacts";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    const assetRegister = await fetchAssetRegister();
+    const [assetRegister, rawOperationalImpacts] = await Promise.all([
+      fetchAssetRegister(),
+      fetchOperationalImpacts(),
+    ]);
     const priorityAssets = priorityAssetPoints(assetRegister);
-    const rainfallPoints = rainfallSamplePoints(assetRegister);
+    const rainfallPoints = [...rainfallSamplePoints(assetRegister), ...operationalImpactSamplePoints(rawOperationalImpacts)];
     const [weather, elevations, water, rainfall] = await Promise.all([
       fetchHoustonWeather(),
       fetchAssetElevations(priorityAssets),
       fetchWaterIntelligence(),
       fetchRainfallIntelligence(rainfallPoints),
     ]);
-    return Response.json(createIncidentIntelligence(weather, elevations, water, rainfall, assetRegister), {
+    const operationalImpacts = enrichOperationalImpacts(rawOperationalImpacts, assetRegister, rainfall);
+    return Response.json(createIncidentIntelligence(weather, elevations, water, rainfall, assetRegister, operationalImpacts), {
       headers: { "Cache-Control": "no-store" },
     });
   } catch (error) {
