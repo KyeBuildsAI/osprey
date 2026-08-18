@@ -412,11 +412,16 @@ export default function Home() {
         {!isLiveLocation && <section className="location-synthetic-panel" aria-label={`${activeLocation.name} configuration`}>
           <header><div><span className="section-kicker">LOCATION CONFIGURATION FOUNDATION</span><h1>{activeLocation.name}</h1><p>{activeLocation.summary}</p></div><span>SYNTHETIC SCENARIO · NOT CONNECTED</span></header>
           <div className="location-config-grid">
-            <section><span>OPERATING CONTEXT</span><strong>{activeLocation.region}</strong><p>Approval authority: {activeLocation.approvalRole}</p></section>
+            <section><span>OPERATING CONTEXT</span><strong>{activeLocation.region}</strong><p>{activeLocation.operatingBoundary}</p><p>Approval authority: {activeLocation.approvalRole}</p></section>
             <section><span>HAZARD PROFILE</span><div>{activeLocation.hazardProfile.map((hazard) => <b key={hazard}>{hazard}</b>)}</div></section>
-            <section><span>EVIDENCE REQUIRED</span><ul>{activeLocation.evidenceRequirements.map((requirement) => <li key={requirement}>{requirement}</li>)}</ul></section>
+            <section><span>ASSET SCOPE</span><strong>{activeLocation.assetScope}</strong><ul>{activeLocation.evidenceRequirements.map((requirement) => <li key={requirement}>{requirement}</li>)}</ul></section>
             <section><span>ONBOARDING CHECKLIST</span><ul>{activeLocation.onboarding.map((item) => <li key={item.label}><i className={item.state === "READY" ? "config-ready" : ""} />{item.label}<b>{item.state}</b></li>)}</ul></section>
           </div>
+          <section className="location-configuration-kit">
+            <div><span>CONNECTOR SET</span><h2>Evidence adapters</h2><ul>{activeLocation.sourceAdapters.map((adapter) => <li key={adapter.label}><i className={adapter.state === "READY" ? "config-ready" : ""} />{adapter.label}<b>{adapter.state}</b></li>)}</ul></div>
+            <div><span>WORKFLOW SHAPE</span><h2>Reusable agent roles</h2><p>These roles are deliberately generic so the workflow can be tested with location-specific evidence without changing its governance model.</p><section>{activeLocation.workflowRoles.map((role, index) => <b key={role}><em>{String(index + 1).padStart(2, "0")}</em>{role}</b>)}</section></div>
+            <div className="configuration-next"><span>NEXT INPUTS</span><h2>To make this location runnable</h2><ol><li>Name the operating area and boundary.</li><li>Confirm its critical assets and thresholds.</li><li>Attach the agreed evidence sources and named approver.</li></ol></div>
+          </section>
           <footer>Use this profile for synthetic agent scenarios first. Osprey will not display Houston–Galveston data as if it belongs to this location.</footer>
         </section>}
 

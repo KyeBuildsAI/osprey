@@ -11,6 +11,10 @@ export type LocationProfile = {
   hazardProfile: string[];
   evidenceRequirements: string[];
   approvalRole: string;
+  operatingBoundary: string;
+  assetScope: string;
+  sourceAdapters: Array<{ label: string; state: "READY" | "PENDING" }>;
+  workflowRoles: string[];
   onboarding: Array<{ label: string; state: "READY" | "PENDING" }>;
 };
 
@@ -26,6 +30,14 @@ export const locationProfiles: LocationProfile[] = [
     hazardProfile: ["Heat", "Flood", "Wind", "Compound"],
     evidenceRequirements: ["NWS weather", "Water levels", "Transport status", "Priority assets"],
     approvalRole: "Houston–Galveston incident commander",
+    operatingBoundary: "Houston–Galveston operating area",
+    assetScope: "Health, transport and critical community assets",
+    sourceAdapters: [
+      { label: "Weather & warnings", state: "READY" },
+      { label: "Water & flood reference", state: "READY" },
+      { label: "Transport & infrastructure", state: "READY" },
+    ],
+    workflowRoles: ["Weather agent", "Infrastructure agent", "Operations agent", "Communications agent"],
     onboarding: [
       { label: "Boundary & operating area", state: "READY" },
       { label: "Hazard thresholds", state: "READY" },
@@ -44,6 +56,14 @@ export const locationProfiles: LocationProfile[] = [
     hazardProfile: ["To configure", "Synthetic scenario"],
     evidenceRequirements: ["Source inventory", "Asset register", "Operating thresholds", "Approval role"],
     approvalRole: "Role to be configured",
+    operatingBoundary: "Boundary to be confirmed",
+    assetScope: "Critical assets to be confirmed",
+    sourceAdapters: [
+      { label: "Weather & warnings", state: "PENDING" },
+      { label: "Water / hazard evidence", state: "PENDING" },
+      { label: "Infrastructure evidence", state: "PENDING" },
+    ],
+    workflowRoles: ["Hazard assessment", "Asset exposure", "Operations response", "Human approval"],
     onboarding: [
       { label: "Boundary & operating area", state: "PENDING" },
       { label: "Hazard thresholds", state: "PENDING" },
@@ -62,6 +82,14 @@ export const locationProfiles: LocationProfile[] = [
     hazardProfile: ["To configure", "Synthetic scenario"],
     evidenceRequirements: ["Source inventory", "Asset register", "Operating thresholds", "Approval role"],
     approvalRole: "Role to be configured",
+    operatingBoundary: "Boundary to be confirmed",
+    assetScope: "Critical assets to be confirmed",
+    sourceAdapters: [
+      { label: "Weather & warnings", state: "PENDING" },
+      { label: "Water / hazard evidence", state: "PENDING" },
+      { label: "Infrastructure evidence", state: "PENDING" },
+    ],
+    workflowRoles: ["Hazard assessment", "Asset exposure", "Operations response", "Human approval"],
     onboarding: [
       { label: "Boundary & operating area", state: "PENDING" },
       { label: "Hazard thresholds", state: "PENDING" },
