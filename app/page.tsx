@@ -340,10 +340,15 @@ export default function Home() {
             <p>One shared operational picture for conditions, infrastructure exposure and governed action.</p>
           </div>
           <div className="hero-state">
-            <span>CURRENT OPERATIONAL STATE</span>
-            <strong className={riskClass(incident.severity)}>{incident.severity}</strong>
-            <p>{assessments.weather.headline}</p>
-            <time>Updated {formatTime(incident.updatedAt, true)} CT</time>
+            <div className="state-posture">
+              <span>CURRENT STATE</span>
+              <strong className={riskClass(incident.severity)}>{incident.severity}</strong>
+            </div>
+            <div className="state-condition">
+              <span>PRIMARY CONDITION</span>
+              <strong>{assessments.weather.headline}</strong>
+              <time>Updated {formatTime(incident.updatedAt, true)} CT</time>
+            </div>
             <small className={sourceGap ? "state-trust state-trust-attention" : "state-trust"}>
               <i />{sourceGap ? `${sourceGap.name} needs attention` : `${reportingSources}/${intelligence.sources.length} critical sources live or verified`}
             </small>
