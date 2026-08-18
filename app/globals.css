@@ -585,13 +585,6 @@ button { cursor: pointer; }
 .map-grid-lines { position: absolute; inset: 0; opacity: .08; background-image: linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px); background-size: 52px 52px; }
 .coast-shape { position: absolute; width: 55%; height: 120%; right: -11%; top: -10%; border-left: 3px solid rgba(136,185,174,.55); border-radius: 52% 0 0 48%; background: #214c42; transform: rotate(-7deg); box-shadow: -35px 0 70px rgba(44,91,77,.35); }
 .bay-water { position: absolute; width: 31%; height: 72%; right: 2%; top: 12%; display: grid; place-items: center; border: 1px solid rgba(146,196,189,.2); border-radius: 48% 52% 58% 42%; color: rgba(170,205,197,.6); background: #17453f; transform: rotate(-10deg); font-size: 9px; letter-spacing: .15em; }
-.risk-area { position: absolute; display: grid; place-items: center; color: rgba(255,255,255,.78); border-radius: 46% 54% 57% 43%; font-size: 10px; letter-spacing: .16em; transform: rotate(-8deg); transition: .2s ease; }
-.risk-high { width: 205px; height: 130px; left: 29%; top: 29%; border: 1px solid rgba(255,143,108,.58); background: rgba(222,91,54,.5); box-shadow: 0 0 34px rgba(222,91,54,.2); }
-.risk-medium { width: 165px; height: 105px; left: 48%; top: 54%; border: 1px solid rgba(243,192,105,.45); background: rgba(226,164,62,.34); }
-.map-layer-assets .risk-area { opacity: .25; }
-.map-layer-impact .risk-area { filter: saturate(1.35); }
-.map-hour-0 .risk-high, .map-hour-3 .risk-high { transform: rotate(-8deg) scale(.88); opacity: .82; }
-.map-hour-9 .risk-high, .map-hour-12 .risk-high { transform: rotate(-8deg) scale(1.14); background: rgba(222,91,54,.62); }
 .query-shape { position: absolute; width: 300px; height: 205px; left: 25%; top: 23%; border: 1px dashed rgba(238,198,111,.82); background: rgba(234,181,75,.045); transform: rotate(-4deg); clip-path: polygon(8% 0,84% 8%,100% 66%,63% 100%,0 73%); }
 .query-shape span { position: absolute; left: 18px; top: 15px; color: #f1d593; font: 9px var(--font-geist-mono); letter-spacing: .12em; }
 .place { position: absolute; display: grid; grid-template-columns: 10px auto; column-gap: 8px; color: #fff; }
