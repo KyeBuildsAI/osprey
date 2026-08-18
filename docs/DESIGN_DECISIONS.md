@@ -123,3 +123,12 @@ Add a new decision when a meaningful tradeoff changes the system, for example:
 - a human-approval policy change.
 
 Each entry should record the decision, rationale, consequences and — once measurable — the result.
+
+
+## DD-016 — Approval queue, not a generic decisions page
+
+**Decision:** Label the navigation surface **Approvals** and make its primary view a queue of consequential operational actions that require a human response. Use **Decisions & Actions** as the page heading.
+
+**Why:** “Decisions” is ambiguous: it can describe agent findings, recommendations, prior choices or unresolved disagreement. The product needs to make the controller’s immediate task unmistakable: decide whether to authorise a proposed action.
+
+**Implication:** Findings, evidence and disagreements remain accessible as support for a proposed action but must not compete with approval items in the default queue. The page must show what will happen after approval, provide approve / edit before approving / request more analysis / reject controls, and preserve the proposal-to-outcome chain. See [APPROVALS_UX.md](APPROVALS_UX.md).
