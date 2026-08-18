@@ -15,6 +15,17 @@ const agentOrder: AgentId[] = ["weather", "infrastructure", "operations", "commu
 
 type WorkspaceId = "overview" | "map" | "intelligence" | "decisions";
 type IntelligenceTab = "weather" | "flood" | "transport" | "infrastructure" | "agents" | "sources";
+type PacketStatus = "DRAFT" | "PENDING_APPROVAL" | "APPROVED" | "DEFERRED";
+type TaskStatus = "HELD" | "OPEN" | "ACKNOWLEDGED" | "COMPLETE";
+
+type WorkflowEvent = {
+  id: string;
+  occurredAt: string;
+  actor: string;
+  title: string;
+  detail: string;
+  evidenceIds: string[];
+};
 
 const workspaces: Array<{ id: WorkspaceId; label: string; number: string; hash: string; description: string }> = [
   { id: "overview", label: "Overview", number: "01", hash: "overview", description: "Exceptions, posture and immediate priorities" },
@@ -44,6 +55,12 @@ const decisionOptions = [
   { id: "COA-02", posture: "prepare", title: "Prepare critical-asset readiness", summary: "Ask owners to verify hospital continuity, emergency-response access and flagged bridge routes without releasing an external action.", benefit: "Shortens response time while preserving operational flexibility.", tradeoff: "Uses limited coordination capacity before a severe threshold is crossed." },
   { id: "COA-03", posture: "act", title: "Activate precautionary response", summary: "Begin a controlled readiness response for elevated assets, subject to named human approval.", benefit: "Creates the largest safety margin for a worsening hazard.", tradeoff: "Consequential preparation may be disproportionate to current evidence." },
 ] as const;
+
+const actionSeed: Array<{ id: string; title: string; owner: string; due: string; status: TaskStatus }> = [
+  { id: "TASK-HGX-01", title: "Verify hospital continuity contacts", owner: "Healthcare liaison", due: "Within 30 minutes", status: "HELD" },
+  { id: "TASK-HGX-02", title: "Confirm emergency access at exposed routes", owner: "Transport lead", due: "Before next forecast frame", status: "HELD" },
+  { id: "TASK-HGX-03", title: "Check flagged bridge-owner readiness", owner: "Infrastructure liaison", due: "Within 60 minutes", status: "HELD" },
+];
 
 const operationalMeasures = [
   { label: "Signal to awareness", value: "<1m", change: "live", detail: "NWS receipt to shared incident state" },
@@ -164,7 +181,9 @@ export default function Home() {
   const [forecastFrameIndex, setForecastFrameIndex] = useState(0);
   const [decisionOpen, setDecisionOpen] = useState(false);
   const [selectedOption, setSelectedOption] = useState<(typeof decisionOptions)[number]["id"]>("COA-02");
-  const [packetQueued, setPacketQueued] = useState(false);
+  const [packetStatus, setPacketStatus] = useState<PacketStatus>("DRAFT");
+  const [actionTasks, setActionTasks] = useState(actionSeed);
+  const [workflowEvents, setWorkflowEvents] = useState<WorkflowEvent[]>([]);
   const [selectedMapFeature, setSelectedMapFeature] = useState<MapFeatureSelection | null>(null);
   const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceId>("overview");
   const [activeIntelligenceTab, setActiveIntelligenceTab] = useState<IntelligenceTab>("weather");
@@ -231,6 +250,51 @@ export default function Home() {
   const elevatedAssets = assets.filter((asset) => asset.exposure !== "NORMAL").length;
   const activeHazard = hazardViews.find((hazard) => hazard.id === activeHazardId) ?? hazardViews[0];
   const selectedCourse = decisionOptions.find((option) => option.id === selectedOption) ?? decisionOptions[1];
+  const packetQueued = packetStatus === "PENDING_APPROVAL" || packetStatus === "APPROVED";
+  const packetApproved = packetStatus === "APPROVED";
+  const openTasks = actionTasks.filter((task) => task.status === "OPEN" || task.status === "ACKNOWLEDGED").length;
+  const completedTasks = actionTasks.filter((task) => task.status === "COMPLETE").length;
+  const decisionTimeline = [...workflowEvents, ...timeline].sort((first, second) => Date.parse(second.occurredAt) - Date.parse(first.occurredAt));
+
+  const appendWorkflowEvent = (title: string, detail: string) => {
+    setWorkflowEvents((events) => [{
+      id: `OSP-${Date.now()}`,
+      occurredAt: new Date().toISOString(),
+      actor: "Kye Hussain · Human controller",
+      title,
+      detail,
+      evidenceIds: [selectedOption, `STATE-v${incident.version}`],
+    }, ...events]);
+  };
+
+  const queueForApproval = () => {
+    setPacketStatus("PENDING_APPROVAL");
+    appendWorkflowEvent("Decision packet submitted for approval", `${selectedCourse.title} is held for named commander approval. No tasks or messages have been released.`);
+    setDecisionOpen(false);
+  };
+
+  const approvePacket = () => {
+    setPacketStatus("APPROVED");
+    setActionTasks((tasks) => tasks.map((task) => ({ ...task, status: "OPEN" })));
+    appendWorkflowEvent("Decision approved and action set opened", `${selectedCourse.title} was approved by Kye Hussain. Three reversible readiness checks are now assigned; communications remain prepared, not released.`);
+    setDecisionOpen(false);
+  };
+
+  const deferPacket = () => {
+    setPacketStatus("DEFERRED");
+    appendWorkflowEvent("Decision deferred for further analysis", `${selectedCourse.title} remains unapproved while additional evidence is requested. No tasks or messages have been released.`);
+    setDecisionOpen(false);
+  };
+
+  const progressTask = (taskId: string) => {
+    const task = actionTasks.find((candidate) => candidate.id === taskId);
+    if (!task || !packetApproved || task.status === "COMPLETE") return;
+    const nextStatus: TaskStatus = task.status === "OPEN" ? "ACKNOWLEDGED" : "COMPLETE";
+    setActionTasks((tasks) => tasks.map((task) => {
+      return task.id === taskId ? { ...task, status: nextStatus } : task;
+    }));
+    appendWorkflowEvent(`Task ${nextStatus.toLowerCase()}`, `${task.title} is ${nextStatus.toLowerCase()} by ${task.owner}.`);
+  };
   const sourceEvidence = [assessments.weather.evidence[0], ...assessments.infrastructure.evidence.slice(0, 2)].filter(Boolean);
   const leadGauge = [...water.riverGauges].sort((a, b) => (b.percentToAction ?? -1) - (a.percentToAction ?? -1))[0];
   const leadCoast = [...water.coastalStations].sort((a, b) => Math.abs(b.anomalyM ?? 0) - Math.abs(a.anomalyM ?? 0))[0];
@@ -380,16 +444,16 @@ export default function Home() {
 
           <aside className="decision-focus" aria-label="Decision queue">
             <span className="section-kicker">DECISION QUEUE</span>
-            <div className="decision-focus-status"><i />HUMAN REVIEW REQUIRED</div>
-            <h2>{packetQueued ? "One packet awaits approval" : "One decision is ready for review"}</h2>
-            <strong>{packetQueued ? selectedCourse.title : selectedCourse.title}</strong>
-            <p>{packetQueued ? "The packet is held until a named authority accepts its exact evidence and action scope." : "Verify critical-asset readiness before the next forecast frame if operational conditions change."}</p>
+            <div className={`decision-focus-status decision-status-${packetStatus.toLowerCase()}`}><i />{packetStatus === "DRAFT" ? "HUMAN REVIEW REQUIRED" : packetStatus.replace("_", " ")}</div>
+            <h2>{packetStatus === "APPROVED" ? "A governed action set is active" : packetStatus === "DEFERRED" ? "Decision held for more analysis" : packetQueued ? "One packet awaits approval" : "One decision is ready for review"}</h2>
+            <strong>{selectedCourse.title}</strong>
+            <p>{packetStatus === "APPROVED" ? `${openTasks} action${openTasks === 1 ? "" : "s"} open · ${completedTasks}/${actionTasks.length} completed. Communications remain held for explicit release.` : packetStatus === "DEFERRED" ? "The packet remains unapproved while additional evidence is gathered. No task or message has been released." : packetQueued ? "The packet is held until a named authority accepts its exact evidence and action scope." : "Verify critical-asset readiness before the next forecast frame if operational conditions change."}</p>
             <dl>
               <div><dt>Authority</dt><dd>Kye Hussain</dd></div>
               <div><dt>Evidence</dt><dd>{reportingSources}/{intelligence.sources.length} sources ready</dd></div>
               <div><dt>First action</dt><dd>Reversible readiness check</dd></div>
             </dl>
-            <button onClick={() => setDecisionOpen(true)}>{packetQueued ? "Open approval packet" : "Review decision packet"} →</button>
+            <button onClick={() => setDecisionOpen(true)}>{packetStatus === "APPROVED" ? "Review action set" : packetQueued ? "Open approval packet" : "Review decision packet"} →</button>
           </aside>
         </section>
 
@@ -781,8 +845,8 @@ export default function Home() {
             <article className="flow-node flow-decision">
               <span className="flow-step">04 · DECISION</span>
               <strong>{packetQueued ? selectedCourse.title : assessments.operations.headline}</strong>
-              <p>{packetQueued ? "Packet is held for named commander approval. No external effect has been released." : assessments.operations.summary}</p>
-              <button onClick={() => setDecisionOpen(true)}>{packetQueued ? "Reopen packet" : "Review decision packet"} →</button>
+              <p>{packetStatus === "APPROVED" ? "Named approval created a controlled internal action set. External communications remain held." : packetQueued ? "Packet is held for named commander approval. No external effect has been released." : assessments.operations.summary}</p>
+              <button onClick={() => setDecisionOpen(true)}>{packetStatus === "APPROVED" ? "Review action set" : packetQueued ? "Reopen packet" : "Review decision packet"} →</button>
             </article>
           </div>
         </section>
@@ -830,14 +894,14 @@ export default function Home() {
         <section className="action-panel decisions-only" id="actions">
           <div className="graph-heading">
             <div><span className="section-kicker">DECISION-TO-OUTCOME CHAIN</span><h2>One governed operational thread</h2></div>
-            <span className="action-gate">External effects held at approval gate</span>
+            <span className="action-gate">{packetStatus === "APPROVED" ? "Internal actions active · external messages held" : "External effects held at approval gate"}</span>
           </div>
           <div className="action-chain">
             {[
-              { stage: "Decision", title: packetQueued ? selectedCourse.title : "Review operational posture", detail: `${selectedOption} · exact evidence state v${incident.version}`, status: packetQueued ? "queued" : "gated" },
-              { stage: "Tasks", title: "Verify critical-asset readiness", detail: `${assets.length} owners · deadlines prepared`, status: "ready" },
-              { stage: "Communications", title: assessments.communications.headline, detail: "Audience and release conditions retained", status: "pending" },
-              { stage: "Outcome", title: "Confirm continuity and access", detail: "Measure acknowledgements and exceptions", status: "measuring" },
+              { stage: "Decision", title: packetQueued ? selectedCourse.title : "Review operational posture", detail: `${selectedOption} · exact evidence state v${incident.version}`, status: packetStatus === "APPROVED" ? "approved" : packetQueued ? "queued" : "gated" },
+              { stage: "Tasks", title: "Verify critical-asset readiness", detail: packetApproved ? `${openTasks} open · ${completedTasks}/${actionTasks.length} complete` : `${actionTasks.length} owners · deadlines prepared`, status: packetApproved ? "active" : "ready" },
+              { stage: "Communications", title: assessments.communications.headline, detail: packetApproved ? "Prepared for explicit release after owner acknowledgement" : "Audience and release conditions retained", status: "pending" },
+              { stage: "Outcome", title: "Confirm continuity and access", detail: packetApproved ? "Track completion, exceptions and continuity checks" : "Measure acknowledgements and exceptions", status: "measuring" },
             ].map((item, index) => (
               <article className="action-stage" key={item.stage}>
                 <div className="stage-index">0{index + 1}</div><span>{item.stage}</span><strong>{item.title}</strong><p>{item.detail}</p><small className={`stage-${item.status}`}>{item.status}</small>
@@ -852,13 +916,39 @@ export default function Home() {
           </div>
         </section>
 
+        <section className="execution-panel decisions-only" aria-label="Action ownership and controlled communications">
+          <div className="graph-heading">
+            <div><span className="section-kicker">ACTION OWNERSHIP</span><h2>Controlled work released from the decision</h2></div>
+            <span className={`execution-state execution-${packetStatus.toLowerCase()}`}>{packetStatus === "APPROVED" ? `${openTasks} open · ${completedTasks} complete` : packetStatus === "PENDING_APPROVAL" ? "Awaiting named approval" : "Held behind approval gate"}</span>
+          </div>
+          <div className="execution-grid">
+            <div className="task-list">
+              {actionTasks.map((task) => (
+                <article className={`task-card task-${task.status.toLowerCase()}`} key={task.id}>
+                  <header><span>{task.id}</span><b>{task.status}</b></header>
+                  <strong>{task.title}</strong>
+                  <p><span>Owner</span>{task.owner}</p>
+                  <p><span>Due</span>{task.due}</p>
+                  {packetApproved && task.status !== "COMPLETE" ? <button onClick={() => progressTask(task.id)}>{task.status === "OPEN" ? "Acknowledge task" : "Mark complete"} →</button> : <small>{packetApproved ? "Completion recorded" : "Opens only after named approval"}</small>}
+                </article>
+              ))}
+            </div>
+            <aside className="communication-hold">
+              <span className="section-kicker">GOVERNED COMMUNICATION</span>
+              <strong>Internal readiness briefing</strong>
+              <p>Prepared for healthcare, infrastructure and transport owners. It remains a draft until a named human authorises release.</p>
+              <dl><div><dt>Audience</dt><dd>3 owner groups</dd></div><div><dt>Release rule</dt><dd>Explicit communication approval</dd></div><div><dt>State</dt><dd>Held · no external effect</dd></div></dl>
+            </aside>
+          </div>
+        </section>
+
         <section className="timeline-panel decisions-only" id="timeline">
           <div className="section-heading">
             <div><span className="section-kicker">INCIDENT TIMELINE</span><h2>What Osprey knew, and when</h2></div>
-            <span className="audit-label">AUDIT SEED · {timeline.length} EVENTS</span>
+            <span className="audit-label">AUDIT TRAIL · {decisionTimeline.length} EVENTS</span>
           </div>
           <div className="timeline-list">
-            {timeline.map((event, index) => (
+            {decisionTimeline.map((event, index) => (
               <article key={event.id}>
                 <time>{formatTime(event.occurredAt)}<small>CT</small></time>
                 <div className="timeline-line"><i /><span /></div>
@@ -897,7 +987,11 @@ export default function Home() {
                 </button>
               ))}
             </div>
-            <footer><p><strong>Demonstration boundary:</strong> queuing this packet records no real-world action.</p><button className="secondary-action" onClick={() => setDecisionOpen(false)}>Request more analysis</button><button className="primary-action" onClick={() => { setPacketQueued(true); setDecisionOpen(false); }}>Queue for commander approval</button></footer>
+            <footer>
+              <p><strong>Demonstration boundary:</strong> this simulates governance only; no task, message or real-world action is released outside Osprey.</p>
+              {packetStatus === "PENDING_APPROVAL" ? <button className="secondary-action" onClick={deferPacket}>Defer for analysis</button> : <button className="secondary-action" onClick={() => { appendWorkflowEvent("Additional analysis requested", "The decision owner requested further evidence before submitting a packet for approval."); setDecisionOpen(false); }}>Request more analysis</button>}
+              {packetStatus === "PENDING_APPROVAL" ? <button className="primary-action" onClick={approvePacket}>Approve and open actions</button> : packetStatus === "APPROVED" ? <button className="primary-action" onClick={() => setDecisionOpen(false)}>Actions are active</button> : <button className="primary-action" onClick={queueForApproval}>{packetStatus === "DEFERRED" ? "Resubmit for approval" : "Queue for commander approval"}</button>}
+            </footer>
           </section>
         </div>
       )}
