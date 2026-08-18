@@ -23,6 +23,15 @@ test("server-renders the Houston–Galveston incident room", async () => {
   assert.match(html, /Houston–Galveston/);
   assert.match(html, /ACTIVE(?:<!-- -->)? INCIDENT/);
   assert.match(html, /SHARED INCIDENT STATE/);
+  assert.match(html, /Exceptions, posture and immediate priorities/);
+  assert.match(html, /Spatial exposure and forecast exploration/);
+  assert.match(html, /Deep feeds, agents and provenance/);
+  assert.match(html, /Evidence, approval, actions and audit/);
+  assert.match(html, /COMMAND BRIEF/);
+  assert.match(html, /What requires attention now/);
+  assert.match(html, /Normal records are collapsed/);
+  assert.match(html, /DEEP INTELLIGENCE/);
+  assert.match(html, /Open one evidence lane at a time/);
   assert.match(html, /SOURCE HEALTH &amp; PROVENANCE/);
   assert.match(html, /Every operational claim has a visible data state/);
   assert.match(html, /Event time/);

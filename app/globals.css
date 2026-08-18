@@ -50,6 +50,56 @@ button { cursor: pointer; }
 .source-warning span { flex: 1; color: #80685f; }
 .source-warning button { padding: 6px 10px; border: 1px solid #d59d88; background: #fff; color: #6f4537; }
 
+.workspace-overview .map-only, .workspace-overview .intelligence-only, .workspace-overview .decisions-only,
+.workspace-map .overview-only, .workspace-map .intelligence-only, .workspace-map .decisions-only,
+.workspace-intelligence .overview-only, .workspace-intelligence .map-only, .workspace-intelligence .decisions-only,
+.workspace-decisions .overview-only, .workspace-decisions .map-only, .workspace-decisions .intelligence-only { display: none !important; }
+
+.workspace-context { min-height: 70px; padding: 13px 36px; display: flex; justify-content: space-between; align-items: center; gap: 24px; border-bottom: 1px solid var(--line); background: #f8faf7; }
+.workspace-context > div:first-child span, .workspace-context > div:first-child strong { display: block; }
+.workspace-context > div:first-child span { color: #3a725f; font: 9px var(--font-geist-mono); font-weight: 740; letter-spacing: .12em; }
+.workspace-context > div:first-child strong { margin-top: 5px; font: 500 17px Georgia, serif; }
+.workspace-health { display: grid; grid-template-columns: 8px auto auto; align-items: center; gap: 8px; color: #5d6f68; font-size: 9px; }
+.workspace-health i { width: 7px; height: 7px; display: block; border-radius: 50%; background: var(--amber); box-shadow: 0 0 0 4px rgba(221,162,68,.12); }
+.workspace-health i.workspace-health-live { background: var(--green); box-shadow: 0 0 0 4px rgba(61,154,113,.12); }
+.workspace-health span { font-weight: 730; letter-spacing: .05em; }
+.workspace-health small { padding-left: 8px; color: #84908b; border-left: 1px solid var(--line); }
+
+.command-brief { margin: 0 36px 16px; }
+.command-brief-heading { display: flex; justify-content: space-between; align-items: end; gap: 20px; }
+.command-brief-heading h2 { margin: 6px 0 0; font: 500 25px Georgia, serif; }
+.command-brief-heading > span { padding: 6px 8px; color: #587168; border: 1px solid #d4dfda; background: #fff; font-size: 8px; font-weight: 720; letter-spacing: .09em; text-transform: uppercase; }
+.command-metrics { margin-top: 13px; display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); border-top: 1px solid var(--line); border-left: 1px solid var(--line); background: #fff; }
+.command-metrics article { min-width: 0; padding: 15px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.command-metrics span, .command-metrics strong, .command-metrics small { display: block; }
+.command-metrics span { color: #738079; font-size: 8px; font-weight: 740; letter-spacing: .11em; }
+.command-metrics strong { margin-top: 8px; color: #264e41; font: 500 29px Georgia, serif; }
+.command-metrics small { min-height: 28px; margin-top: 5px; overflow: hidden; color: #7c8882; font-size: 8px; line-height: 1.45; text-overflow: ellipsis; }
+.command-priorities { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); border-left: 1px solid var(--line); background: #f8faf7; }
+.command-priorities button { min-width: 0; padding: 16px; display: flex; flex-direction: column; align-items: flex-start; color: var(--ink); border: 0; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); background: transparent; text-align: left; }
+.command-priorities button:hover { background: #eef5f1; }
+.command-priorities span { color: #38735e; font-size: 8px; font-weight: 750; letter-spacing: .1em; }
+.command-priorities strong { min-height: 38px; margin-top: 8px; font: 500 16px/1.2 Georgia, serif; }
+.command-priorities small { margin-top: 10px; color: #6c7b75; font-size: 9px; font-weight: 680; }
+
+.intelligence-tabs { margin: 28px 36px 0; padding: 17px 18px; display: flex; justify-content: space-between; align-items: center; gap: 24px; border: 1px solid var(--line); background: #fff; box-shadow: 0 9px 30px rgba(31,49,42,.04); }
+.intelligence-tabs h2 { margin: 5px 0 0; font: 500 22px Georgia, serif; }
+.intelligence-tabs nav { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 5px; }
+.intelligence-tabs button { padding: 8px 11px; color: #68766f; border: 1px solid #d6ded9; background: #f8faf8; font-size: 9px; font-weight: 680; }
+.intelligence-tabs button:hover, .intelligence-tabs button.selected { color: #fff; border-color: var(--forest); background: var(--forest); }
+
+.intel-weather .tab-flood, .intel-weather .tab-transport, .intel-weather .tab-infrastructure, .intel-weather .tab-agents, .intel-weather .tab-sources,
+.intel-flood .tab-weather, .intel-flood .tab-transport, .intel-flood .tab-infrastructure, .intel-flood .tab-agents, .intel-flood .tab-sources,
+.intel-transport .tab-weather, .intel-transport .tab-flood, .intel-transport .tab-infrastructure, .intel-transport .tab-agents, .intel-transport .tab-sources,
+.intel-infrastructure .tab-weather, .intel-infrastructure .tab-flood, .intel-infrastructure .tab-transport, .intel-infrastructure .tab-agents, .intel-infrastructure .tab-sources,
+.intel-agents .tab-weather, .intel-agents .tab-flood, .intel-agents .tab-transport, .intel-agents .tab-infrastructure, .intel-agents .tab-sources,
+.intel-sources .tab-weather, .intel-sources .tab-flood, .intel-sources .tab-transport, .intel-sources .tab-infrastructure, .intel-sources .tab-agents { display: none !important; }
+
+.workspace-map .operational-workspace { margin-top: 20px; }
+.workspace-map .map-canvas { min-height: 620px; }
+.workspace-decisions .evidence-graph { margin-top: 28px; }
+.workspace-intelligence .intelligence-operations { grid-template-columns: 1fr; }
+
 .incident-hero { padding: 42px 36px 30px; display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 48px; align-items: end; }
 .eyebrow-row { display: flex; align-items: center; gap: 9px; color: #71807a; font-size: 11px; font-weight: 720; letter-spacing: .11em; }
 .eyebrow-row span { color: #2c6e58; }
@@ -661,6 +711,11 @@ button { cursor: pointer; }
   .source-health-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .forecast-control { grid-template-columns: 1fr 1fr; }
   .forecast-frame-metrics { border-left: 0; }
+  .command-metrics { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .command-priorities { grid-template-columns: 1fr; }
+  .command-priorities strong { min-height: 0; }
+  .intelligence-tabs { align-items: flex-start; flex-direction: column; }
+  .intelligence-tabs nav { justify-content: flex-start; }
 }
 
 @media (max-width: 680px) {
@@ -673,6 +728,10 @@ button { cursor: pointer; }
   .room-nav a { padding: 9px; }
   .nav-current { font-size: 0 !important; }
   .room-topbar { height: 56px; padding: 0 18px; }
+  .workspace-context { min-height: 64px; padding: 11px 18px; align-items: flex-start; flex-direction: column; gap: 8px; }
+  .workspace-context > div:first-child strong { font-size: 15px; }
+  .workspace-health { width: 100%; grid-template-columns: 8px auto 1fr; }
+  .workspace-health small { justify-self: end; }
   .classification { display: none; }
   .source-warning { margin: 12px 18px 0; align-items: flex-start; flex-wrap: wrap; }
   .source-warning span { flex-basis: 70%; }
@@ -684,6 +743,14 @@ button { cursor: pointer; }
   .water-ribbon > div:nth-child(n+3) { display: none; }
   .condition { grid-column: 1 / -1; border-top: 1px solid var(--line); border-right: 0 !important; }
   .shared-state, .agent-section, .operations-grid, .timeline-panel { margin-left: 18px; margin-right: 18px; }
+  .command-brief { margin: 0 18px 16px; }
+  .command-brief-heading { align-items: flex-start; }
+  .command-brief-heading > span { display: none; }
+  .command-metrics { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .command-priorities { grid-template-columns: 1fr; }
+  .intelligence-tabs { margin: 20px 18px 0; padding: 14px; }
+  .intelligence-tabs nav { width: 100%; flex-wrap: nowrap; overflow-x: auto; padding-bottom: 3px; }
+  .intelligence-tabs button { white-space: nowrap; }
   .source-health-panel { margin-left: 18px; margin-right: 18px; }
   .water-depth-panel, .rainfall-depth-panel, .asset-register-panel, .operational-impact-panel { margin-left: 18px; margin-right: 18px; }
   .threshold-cache-note { grid-template-columns: 1fr; gap: 8px; }

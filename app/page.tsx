@@ -13,6 +13,25 @@ import type { FloodCategory, RiverGauge } from "@/lib/water-types";
 
 const agentOrder: AgentId[] = ["weather", "infrastructure", "operations", "communications"];
 
+type WorkspaceId = "overview" | "map" | "intelligence" | "decisions";
+type IntelligenceTab = "weather" | "flood" | "transport" | "infrastructure" | "agents" | "sources";
+
+const workspaces: Array<{ id: WorkspaceId; label: string; number: string; hash: string; description: string }> = [
+  { id: "overview", label: "Overview", number: "01", hash: "overview", description: "Exceptions, posture and immediate priorities" },
+  { id: "map", label: "Map", number: "02", hash: "operational-map", description: "Spatial exposure and forecast exploration" },
+  { id: "intelligence", label: "Intelligence", number: "03", hash: "intelligence", description: "Deep feeds, agents and provenance" },
+  { id: "decisions", label: "Decisions", number: "04", hash: "decisions", description: "Evidence, approval, actions and audit" },
+];
+
+const intelligenceTabs: Array<{ id: IntelligenceTab; label: string }> = [
+  { id: "weather", label: "Weather" },
+  { id: "flood", label: "Flood" },
+  { id: "transport", label: "Transport" },
+  { id: "infrastructure", label: "Infrastructure" },
+  { id: "agents", label: "Agents" },
+  { id: "sources", label: "Sources" },
+];
+
 const hazardViews = [
   { id: "compound", label: "Compound", focus: "All operational hazards", status: "Active" },
   { id: "flood", label: "Flood", focus: "Coastal and surface-water exposure", status: "Watch" },
@@ -147,6 +166,8 @@ export default function Home() {
   const [selectedOption, setSelectedOption] = useState<(typeof decisionOptions)[number]["id"]>("COA-02");
   const [packetQueued, setPacketQueued] = useState(false);
   const [selectedMapFeature, setSelectedMapFeature] = useState<MapFeatureSelection | null>(null);
+  const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceId>("overview");
+  const [activeIntelligenceTab, setActiveIntelligenceTab] = useState<IntelligenceTab>("weather");
 
   const refreshIntelligence = useCallback(async () => {
     setRefreshState("loading");
@@ -189,6 +210,22 @@ export default function Home() {
     };
   }, [refreshFemaInBackground, refreshIntelligence]);
 
+  useEffect(() => {
+    const syncWorkspaceFromHash = () => {
+      const hash = window.location.hash.replace("#", "");
+      const directMatch = workspaces.find((workspace) => workspace.hash === hash);
+      if (directMatch) setActiveWorkspace(directMatch.id);
+      if (hash === "agents") {
+        setActiveWorkspace("intelligence");
+        setActiveIntelligenceTab("agents");
+      }
+      if (hash === "timeline" || hash === "actions") setActiveWorkspace("decisions");
+    };
+    syncWorkspaceFromHash();
+    window.addEventListener("hashchange", syncWorkspaceFromHash);
+    return () => window.removeEventListener("hashchange", syncWorkspaceFromHash);
+  }, []);
+
   const { incident, weather, water, rainfall, assetRegister, operationalImpacts, assessments, assets, timeline } = intelligence;
   const activeAssessment = assessments[openAgent];
   const elevatedAssets = assets.filter((asset) => asset.exposure !== "NORMAL").length;
@@ -219,25 +256,44 @@ export default function Home() {
   const forecastHour = selectedForecastFrame ? forecastOffsetHours(firstForecastTime, selectedForecastFrame.startTime) : 0;
   const forecastMarkIndexes = [...new Set([0, 3, 6, 9, 12].map((index) => Math.min(index, Math.max(0, forecastFrames.length - 1))))];
   const reportingSources = intelligence.sources.filter((source) => ["LIVE", "CACHED"].includes(source.status)).length;
+  const activeWorkspaceMeta = workspaces.find((workspace) => workspace.id === activeWorkspace) ?? workspaces[0];
+  const elevatedGauges = water.riverGauges.filter((gauge) => !["NORMAL", "UNKNOWN"].includes(gauge.category));
+  const highestPriorityImpact = displayedOperationalImpacts[0];
+
+  const changeWorkspace = useCallback((workspace: WorkspaceId, tab?: IntelligenceTab) => {
+    setActiveWorkspace(workspace);
+    if (tab) setActiveIntelligenceTab(tab);
+    const target = workspaces.find((item) => item.id === workspace)?.hash ?? workspace;
+    window.history.replaceState(null, "", `#${target}`);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, []);
 
   const openInfrastructureContext = useCallback(() => {
     setOpenAgent("infrastructure");
+    setActiveIntelligenceTab("agents");
+    setActiveWorkspace("intelligence");
+    window.history.replaceState(null, "", "#intelligence");
     window.setTimeout(() => document.getElementById("agents")?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
   }, []);
 
   return (
-    <main className="room-shell">
+    <main className={`room-shell workspace-${activeWorkspace} intel-${activeIntelligenceTab}`}>
       <aside className="room-sidebar">
         <a className="brand" href="#top" aria-label="Osprey incident room">
           <span className="brand-symbol">O</span>
           <span>OSPREY</span>
         </a>
 
-        <nav className="room-nav" aria-label="Incident room sections">
-          <a href="#overview" className="nav-current"><span>01</span>Overview</a>
-          <a href="#operational-map"><span>02</span>Map</a>
-          <a href="#agents"><span>03</span>Agents</a>
-          <a href="#timeline"><span>04</span>Timeline</a>
+        <nav className="room-nav" aria-label="Incident room workspaces">
+          {workspaces.map((workspace) => (
+            <a
+              href={`#${workspace.hash}`}
+              title={workspace.description}
+              className={activeWorkspace === workspace.id ? "nav-current" : ""}
+              key={workspace.id}
+              onClick={(event) => { event.preventDefault(); changeWorkspace(workspace.id); }}
+            ><span>{workspace.number}</span>{workspace.label}</a>
+          ))}
         </nav>
 
         <div className="sidebar-status">
@@ -259,6 +315,11 @@ export default function Home() {
           <div className="classification">{incident.classification}</div>
         </header>
 
+        <section className="workspace-context" aria-label="Current Osprey workspace">
+          <div><span>{activeWorkspaceMeta.number} · {activeWorkspaceMeta.label.toUpperCase()}</span><strong>{activeWorkspaceMeta.description}</strong></div>
+          <div className="workspace-health"><i className={reportingSources === intelligence.sources.length ? "workspace-health-live" : ""} /><span>{reportingSources}/{intelligence.sources.length} sources ready</span><small>Updated {formatTime(incident.updatedAt)} CT</small></div>
+        </section>
+
         {refreshState === "error" && (
           <div className="source-warning" role="status">
             <strong>Live intelligence refresh paused.</strong>
@@ -267,7 +328,7 @@ export default function Home() {
           </div>
         )}
 
-        <section className="incident-hero" id="overview">
+        <section className="incident-hero overview-only" id="overview">
           <div className="hero-main">
             <div className="eyebrow-row"><span>TEXAS GULF COAST</span><i />SHARED INCIDENT STATE v{incident.version}</div>
             <h1>Houston–Galveston<br />Incident Room</h1>
@@ -285,7 +346,25 @@ export default function Home() {
           </div>
         </section>
 
-        <section className="weather-ribbon" aria-label="Live Houston weather">
+        <section className="command-brief overview-only" aria-label="Operational exceptions and priorities">
+          <div className="command-brief-heading">
+            <div><span className="section-kicker">COMMAND BRIEF</span><h2>What requires attention now</h2></div>
+            <span>Normal records are collapsed</span>
+          </div>
+          <div className="command-metrics">
+            <article><span>ACTIVE WARNINGS</span><strong>{weather.activeAlerts.length}</strong><small>{weather.activeAlerts.length === 0 ? "No active NWS warnings" : "Review authoritative alert detail"}</small></article>
+            <article><span>RESTRICTED / CLOSED</span><strong>{closureImpacts.length}</strong><small>{highestPriorityImpact?.location ?? "No confirmed transport restriction"}</small></article>
+            <article><span>ELEVATED GAUGES</span><strong>{elevatedGauges.length}</strong><small>{elevatedGauges[0]?.name ?? `${water.riverGauges.length} gauges reporting normally`}</small></article>
+            <article><span>ASSETS TO WATCH</span><strong>{elevatedAssets}</strong><small>{assets.length} priority assets screened</small></article>
+          </div>
+          <div className="command-priorities">
+            <button onClick={() => changeWorkspace("map")}><span>01 · SPATIAL PICTURE</span><strong>Inspect warnings, disruptions and exposed infrastructure</strong><small>Open operational map →</small></button>
+            <button onClick={() => changeWorkspace("intelligence", closureImpacts.length > 0 ? "transport" : "flood")}><span>02 · LIVE EVIDENCE</span><strong>{highestPriorityImpact ? `${highestPriorityImpact.status}: ${highestPriorityImpact.location}` : assessments.weather.headline}</strong><small>Open detailed intelligence →</small></button>
+            <button onClick={() => changeWorkspace("decisions")}><span>03 · GOVERNED ACTION</span><strong>{packetQueued ? selectedCourse.title : assessments.operations.headline}</strong><small>{packetQueued ? "Packet awaiting named approval" : "Review options and evidence"} →</small></button>
+          </div>
+        </section>
+
+        <section className="weather-ribbon overview-only" aria-label="Live Houston weather">
           <div className="weather-lead">
             <span className={`source-pill ${weather.isLive ? "pill-live" : "pill-preview"}`}><i />{weather.isLive ? "LIVE NWS" : "CONNECTING"}</span>
             <strong>Houston conditions</strong>
@@ -298,7 +377,7 @@ export default function Home() {
           <div className="weather-stat alert-stat"><span>ACTIVE ALERTS</span><strong>{weather.activeAlerts.length}</strong></div>
         </section>
 
-        <section className="water-ribbon" aria-label="Live flood and water intelligence">
+        <section className="water-ribbon overview-only" aria-label="Live flood and water intelligence">
           <div className="water-ribbon-lead">
             <span className={`source-pill ${water.isLive ? "pill-live" : "pill-preview"}`}><i />{water.isLive ? "LIVE WATER" : "CONNECTING"}</span>
             <strong>Flood &amp; water intelligence</strong>
@@ -310,13 +389,22 @@ export default function Home() {
           <div><span>FLOOD ZONES</span><strong>{floodZoneStatusLabel(water.floodZoneStatus)}</strong><small>{water.floodZones.features.length > 0 ? `${water.floodZones.features.length} mapped features` : "Gauge feeds unaffected"}</small></div>
         </section>
 
-        <section className="shared-state" aria-label="Shared incident state flow">
+        <section className="shared-state overview-only" aria-label="Shared incident state flow">
           <span className="shared-label">ONE SHARED INCIDENT STATE</span>
           <div><span>NWS + rainfall + water + official assets</span><i>→</i><span>Weather</span><i>→</i><span>Infrastructure</span><i>→</i><span>Operations</span><i>→</i><span>Communications</span></div>
           <small>Each specialist reads the accepted findings before it and publishes evidence-bound output back to the same incident.</small>
         </section>
 
-        <section className="source-health-panel" aria-label="Operational source health and provenance">
+        <section className="intelligence-tabs intelligence-only" aria-label="Intelligence categories">
+          <div><span className="section-kicker">DEEP INTELLIGENCE</span><h2>Open one evidence lane at a time</h2></div>
+          <nav>
+            {intelligenceTabs.map((tab) => (
+              <button key={tab.id} className={activeIntelligenceTab === tab.id ? "selected" : ""} onClick={() => setActiveIntelligenceTab(tab.id)} aria-pressed={activeIntelligenceTab === tab.id}>{tab.label}</button>
+            ))}
+          </nav>
+        </section>
+
+        <section className="source-health-panel intelligence-only tab-sources" aria-label="Operational source health and provenance">
           <div className="source-health-heading">
             <div><span className="section-kicker">SOURCE HEALTH &amp; PROVENANCE</span><h2>Every operational claim has a visible data state.</h2></div>
             <span>{reportingSources}/{intelligence.sources.length} live or verified</span>
@@ -337,7 +425,7 @@ export default function Home() {
           </div>
         </section>
 
-        <section className="operational-workspace" id="operational-map">
+        <section className="operational-workspace map-only" id="operational-map">
           <div className="hazard-lenses" aria-label="Hazard-specific operational views">
             <span>OPERATIONAL LENS</span>
             <div>
@@ -375,6 +463,7 @@ export default function Home() {
               forecastHour={forecastHour}
               forecastValidAt={selectedForecastFrame?.startTime ?? null}
               hazard={activeHazard.id}
+              active={activeWorkspace === "map"}
               onFeatureSelect={setSelectedMapFeature}
               onOpenInfrastructure={openInfrastructureContext}
             />
@@ -398,7 +487,7 @@ export default function Home() {
           </div>
         </section>
 
-        <section className="asset-register-panel" aria-label="Official infrastructure reference register">
+        <section className="asset-register-panel intelligence-only tab-infrastructure" aria-label="Official infrastructure reference register">
           <div className="section-heading">
             <div><span className="section-kicker">AUTHORITATIVE ASSET REGISTER v1</span><h2>Real infrastructure, separated from live condition evidence</h2></div>
             <span className={`water-health ${assetRegister.warnings.length === 0 ? "water-health-live" : "water-health-partial"}`}><i />{assetRegister.features.length} REFERENCE RECORDS</span>
@@ -417,7 +506,7 @@ export default function Home() {
           </div>
         </section>
 
-        <section className="operational-impact-panel" aria-label="Live reported and verified transport disruptions">
+        <section className="operational-impact-panel intelligence-only tab-transport" aria-label="Live reported and verified transport disruptions">
           <div className="section-heading">
             <div><span className="section-kicker">LIVE OPERATIONAL IMPACTS v1</span><h2>From possible exposure to reported disruption</h2></div>
             <span className={`water-health ${operationalImpacts.sourceHealth.status === "LIVE" ? "water-health-live" : "water-health-partial"}`}><i />{operationalImpacts.sourceHealth.status} HOUSTON TRANSTAR</span>
@@ -458,7 +547,7 @@ export default function Home() {
           <p className="impact-source-boundary">Showing up to 10 highest-certainty or highest-impact active records; all active records remain mapped. Operational awareness only. Houston TranStar’s published status is reproduced without inferring road passability beyond the stated incident or closure. “Active” scheduled work is separated from a confirmed total closure. Alternative routing is intentionally deferred until a verified routing source is connected. Obtain TxDOT permission before broader redistribution of TranStar content.</p>
         </section>
 
-        <section className="rainfall-depth-panel" aria-label="Radar-estimated rainfall accumulation and runoff screening">
+        <section className="rainfall-depth-panel intelligence-only tab-flood" aria-label="Radar-estimated rainfall accumulation and runoff screening">
           <div className="section-heading">
             <div><span className="section-kicker">RAINFALL &amp; RUNOFF SCREENING v1</span><h2>Radar accumulation translated into asset context</h2></div>
             <span className={`water-health ${rainfall.sourceHealth.status === "LIVE" ? "water-health-live" : "water-health-partial"}`}><i />{rainfall.sourceHealth.status} NOAA MRMS</span>
@@ -489,7 +578,7 @@ export default function Home() {
           </div>
         </section>
 
-        <section className="water-depth-panel" aria-label="River and coastal station detail">
+        <section className="water-depth-panel intelligence-only tab-flood" aria-label="River and coastal station detail">
           <div className="section-heading">
             <div><span className="section-kicker">FLOOD &amp; WATER INTELLIGENCE v1</span><h2>Live thresholds, trends and tide anomalies</h2></div>
             <span className={`water-health ${water.warnings.length === 0 ? "water-health-live" : "water-health-partial"}`}><i />{water.warnings.length === 0 ? "ALL SOURCES REPORTING" : `${water.warnings.length} SOURCE NOTICE${water.warnings.length === 1 ? "" : "S"}`}</span>
@@ -568,7 +657,7 @@ export default function Home() {
           <p className="water-boundary">Operational awareness only. Gauge observations can be provisional; cached thresholds may intentionally lag live levels by up to 24 hours because they are slowly changing reference metadata. FEMA NFHL zones describe mapped hazard, not current inundation; Osprey retains the last verified complete snapshot when a refresh fails. Infrastructure identities come from official reference inventories, but their current operating condition is not inferred.</p>
         </section>
 
-        <section className="agent-section" id="agents">
+        <section className="agent-section intelligence-only tab-agents" id="agents">
           <div className="section-heading">
             <div><span className="section-kicker">SPECIALIST INTELLIGENCE</span><h2>Four perspectives. One operating picture.</h2></div>
             <span className="complete-status"><i />All assessments complete</span>
@@ -629,7 +718,7 @@ export default function Home() {
           </div>
         </section>
 
-        <section className="evidence-graph" aria-label="Incident evidence graph">
+        <section className="evidence-graph decisions-only" aria-label="Incident evidence graph">
           <div className="graph-heading">
             <div><span className="section-kicker">INCIDENT EVIDENCE GRAPH</span><h2>From live source to governed decision</h2></div>
             <span><i />{assessments.weather.evidence.length + assessments.infrastructure.evidence.length} linked records · state v{incident.version}</span>
@@ -662,8 +751,8 @@ export default function Home() {
           </div>
         </section>
 
-        <div className="operations-grid">
-          <section className="asset-panel" id="assets">
+        <div className="operations-grid intelligence-only intelligence-operations">
+          <section className="asset-panel tab-infrastructure" id="assets">
             <div className="panel-heading">
               <div><span className="section-kicker">PRIORITY ASSET WATCHLIST</span><h2>Critical assets</h2></div>
               <span>{elevatedAssets} require monitoring</span>
@@ -680,7 +769,7 @@ export default function Home() {
             <p className="fixture-note">Watchlist identities and coordinates come from official USGS and FHWA reference inventories. Osprey maps them against live hazard evidence; it does not claim live facility or bridge operating status.</p>
           </section>
 
-          <section className="alert-panel">
+          <section className="alert-panel tab-weather">
             <div className="panel-heading">
               <div><span className="section-kicker">AUTHORITATIVE ALERTS</span><h2>NWS alert feed</h2></div>
               <span>{weather.activeAlerts.length} active</span>
@@ -702,7 +791,7 @@ export default function Home() {
           </section>
         </div>
 
-        <section className="action-panel" id="actions">
+        <section className="action-panel decisions-only" id="actions">
           <div className="graph-heading">
             <div><span className="section-kicker">DECISION-TO-OUTCOME CHAIN</span><h2>One governed operational thread</h2></div>
             <span className="action-gate">External effects held at approval gate</span>
@@ -727,7 +816,7 @@ export default function Home() {
           </div>
         </section>
 
-        <section className="timeline-panel" id="timeline">
+        <section className="timeline-panel decisions-only" id="timeline">
           <div className="section-heading">
             <div><span className="section-kicker">INCIDENT TIMELINE</span><h2>What Osprey knew, and when</h2></div>
             <span className="audit-label">AUDIT SEED · {timeline.length} EVENTS</span>

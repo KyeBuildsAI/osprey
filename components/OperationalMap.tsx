@@ -368,6 +368,7 @@ export function OperationalMap({
   forecastHour,
   forecastValidAt,
   hazard,
+  active,
   onFeatureSelect,
   onOpenInfrastructure,
 }: {
@@ -381,6 +382,7 @@ export function OperationalMap({
   forecastHour: number;
   forecastValidAt: string | null;
   hazard: HazardId;
+  active: boolean;
   onFeatureSelect?: (feature: MapFeatureSelection) => void;
   onOpenInfrastructure?: () => void;
 }) {
@@ -409,6 +411,11 @@ export function OperationalMap({
     Highways: true,
     Watersheds: true,
   });
+  useEffect(() => {
+    if (!active || !mapReady) return;
+    const frame = window.requestAnimationFrame(() => mapRef.current?.resize());
+    return () => window.cancelAnimationFrame(frame);
+  }, [active, mapReady]);
   const visibleRegisterCategories = useMemo(() => REGISTER_LAYERS.flatMap((registerLayer) => registerLayers[registerLayer] ? REGISTER_CATEGORIES[registerLayer] : []), [registerLayers]);
 
   const visibleAlerts = useMemo(() => alerts.filter((alert) => matchesHazard(alert, hazard)), [alerts, hazard]);
