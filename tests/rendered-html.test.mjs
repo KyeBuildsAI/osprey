@@ -24,7 +24,8 @@ test("server-renders the Houston–Galveston incident room", async () => {
   assert.match(html, /ACTIVE(?:<!-- -->)? INCIDENT/);
   assert.match(html, /OPERATING LOCATIONS/);
   assert.match(html, /Houston–Galveston/);
-  assert.match(html, /additional locations will appear here/);
+  assert.match(html, /configured locations/);
+  assert.match(html, /Synthetic scenario shell/);
   assert.match(html, /Incident room workspaces/);
   assert.match(html, /SHARED INCIDENT STATE/);
   assert.match(html, /Exceptions, posture and immediate priorities/);

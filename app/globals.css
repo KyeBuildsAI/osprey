@@ -66,6 +66,28 @@ button { cursor: pointer; }
 .location-bar button.location-selected { box-shadow: inset 0 -3px var(--signal); background: #f3f7f4; }
 .location-bar button.location-selected > span { color: #b75d3d; }
 .location-bar > small { align-self: center; color: #87918d; font-size: 8px; letter-spacing: .04em; }
+.location-synthetic-panel { display: none; }
+.location-synthetic .room-workspace > :not(.location-bar):not(.room-topbar):not(.location-synthetic-panel):not(.room-footer) { display: none !important; }
+.location-synthetic .location-synthetic-panel { margin: 28px 36px 0; display: block; border: 1px solid #d8dfdb; background: #fff; box-shadow: 0 9px 30px rgba(31,49,42,.045); }
+.location-synthetic-panel > header { padding: 27px 28px 24px; display: flex; justify-content: space-between; align-items: start; gap: 20px; border-bottom: 1px solid var(--line); }
+.location-synthetic-panel h1 { margin: 7px 0 8px; font: 500 34px/1.05 Georgia, serif; letter-spacing: -.025em; }
+.location-synthetic-panel header p { max-width: 660px; margin: 0; color: #6a7771; font-size: 13px; line-height: 1.5; }
+.location-synthetic-panel header > span { padding: 7px 9px; color: #8a6525; background: #faf0db; font-size: 9px; font-weight: 760; letter-spacing: .1em; white-space: nowrap; }
+.location-config-grid { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); }
+.location-config-grid > section { min-width: 0; min-height: 210px; padding: 19px; border-right: 1px solid var(--line); }
+.location-config-grid > section:last-child { border-right: 0; }
+.location-config-grid > section > span { color: #728079; font-size: 8px; font-weight: 760; letter-spacing: .11em; }
+.location-config-grid > section > strong { margin-top: 13px; display: block; font: 500 20px/1.15 Georgia, serif; }
+.location-config-grid > section > p { margin: 10px 0 0; color: #6b7872; font-size: 10px; line-height: 1.5; }
+.location-config-grid > section > div { margin-top: 14px; display: flex; flex-wrap: wrap; gap: 6px; }
+.location-config-grid > section > div b { padding: 6px 7px; color: #52685f; background: #eff3f0; font-size: 9px; }
+.location-config-grid ul { margin: 13px 0 0; padding: 0; list-style: none; }
+.location-config-grid li { padding: 7px 0; color: #63716b; border-top: 1px solid #edf0ee; font-size: 10px; line-height: 1.35; }
+.location-config-grid li:first-child { border-top: 0; }
+.location-config-grid li i { width: 6px; height: 6px; margin-right: 7px; display: inline-block; border-radius: 50%; background: #d8a33e; }
+.location-config-grid li i.config-ready { background: #48a57a; }
+.location-config-grid li b { float: right; color: #88745a; font: 8px var(--font-geist-mono); }
+.location-synthetic-panel > footer { padding: 13px 19px; color: #786544; border-top: 1px solid #e9dbc0; background: #fbf6ea; font-size: 10px; line-height: 1.45; }
 
 .overview-command-deck { margin: 0 36px 20px; display: grid; grid-template-columns: minmax(0,1.55fr) minmax(270px,.72fr); gap: 16px; align-items: stretch; }
 .command-brief { min-width: 0; }
@@ -795,6 +817,9 @@ button { cursor: pointer; }
   .sidebar-status, .operator { display: none; }
   .location-bar { padding-inline: 20px; grid-template-columns: 112px minmax(0,1fr); gap: 12px; }
   .location-bar > small { display: none; }
+  .location-config-grid { grid-template-columns: 1fr 1fr; }
+  .location-config-grid > section:nth-child(2) { border-right: 0; }
+  .location-config-grid > section:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
   .hero-state { grid-template-columns: 132px minmax(180px,1fr) 1fr; gap: 14px; }
   .hero-state .refresh-button { grid-column: 1 / -1; width: 100%; }
   .weather-ribbon { grid-template-columns: 1.3fr .7fr 1.1fr; }
@@ -852,6 +877,13 @@ button { cursor: pointer; }
   .location-bar { min-height: 68px; padding: 0 14px; grid-template-columns: minmax(0,1fr); gap: 0; }
   .location-bar > span, .location-bar > small { display: none; }
   .location-bar button { min-width: 195px; padding: 10px 12px; }
+  .location-synthetic .location-synthetic-panel { margin: 20px 14px 0; }
+  .location-synthetic-panel > header { padding: 20px 16px; display: block; }
+  .location-synthetic-panel h1 { font-size: 30px; }
+  .location-synthetic-panel header > span { margin-top: 14px; display: inline-block; white-space: normal; }
+  .location-config-grid { grid-template-columns: 1fr; }
+  .location-config-grid > section, .location-config-grid > section:nth-child(2) { min-height: 0; border-right: 0; border-bottom: 1px solid var(--line); }
+  .location-config-grid > section:last-child { border-bottom: 0; }
   .room-topbar { height: 56px; padding: 0 14px; }
   .classification { display: none; }
   .source-warning { margin: 12px 14px 0; align-items: flex-start; flex-wrap: wrap; }

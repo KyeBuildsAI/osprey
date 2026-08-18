@@ -9,6 +9,7 @@ import {
   type IncidentIntelligence,
   type RiskLevel,
 } from "@/lib/intelligence";
+import { locationProfiles } from "@/lib/locations";
 import type { FloodCategory, RiverGauge } from "@/lib/water-types";
 
 const agentOrder: AgentId[] = ["weather", "infrastructure", "operations", "communications"];
@@ -192,6 +193,7 @@ export default function Home() {
   const [selectedMapFeature, setSelectedMapFeature] = useState<MapFeatureSelection | null>(null);
   const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceId>("overview");
   const [activeIntelligenceTab, setActiveIntelligenceTab] = useState<IntelligenceTab>("weather");
+  const [activeLocationId, setActiveLocationId] = useState(locationProfiles[0].id);
 
   const refreshIntelligence = useCallback(async () => {
     setRefreshState("loading");
@@ -251,6 +253,8 @@ export default function Home() {
   }, []);
 
   const { incident, weather, water, rainfall, assetRegister, operationalImpacts, assessments, assets, timeline } = intelligence;
+  const activeLocation = locationProfiles.find((location) => location.id === activeLocationId) ?? locationProfiles[0];
+  const isLiveLocation = activeLocation.readiness === "LIVE";
   const activeAssessment = assessments[openAgent];
   const elevatedAssets = assets.filter((asset) => asset.exposure !== "NORMAL").length;
   const activeHazard = hazardViews.find((hazard) => hazard.id === activeHazardId) ?? hazardViews[0];
@@ -355,7 +359,7 @@ export default function Home() {
   }, []);
 
   return (
-    <main className={`room-shell workspace-${activeWorkspace} intel-${activeIntelligenceTab}`}>
+    <main className={`room-shell workspace-${activeWorkspace} intel-${activeIntelligenceTab} location-${activeLocation.readiness.toLowerCase()}`}>
       <aside className="room-sidebar">
         <a className="brand" href="#top" aria-label="Osprey incident room">
           <span className="brand-symbol">O</span>
@@ -375,10 +379,10 @@ export default function Home() {
         </nav>
 
         <div className="sidebar-status">
-          <span className={`source-dot ${reportingSources === intelligence.sources.length ? "source-live" : "source-waiting"}`} />
+          <span className={`source-dot ${isLiveLocation && reportingSources === intelligence.sources.length ? "source-live" : "source-waiting"}`} />
           <div>
-            <strong>{reportingSources}/{intelligence.sources.length} sources ready</strong>
-            <small>Health · freshness · provenance</small>
+            <strong>{isLiveLocation ? `${reportingSources}/${intelligence.sources.length} sources ready` : "Scenario configuration"}</strong>
+            <small>{isLiveLocation ? "Health · freshness · provenance" : "No live sources connected"}</small>
           </div>
         </div>
         <div className="operator">
@@ -391,17 +395,30 @@ export default function Home() {
         <section className="location-bar" aria-label="Operating locations">
           <span>OPERATING LOCATIONS</span>
           <nav aria-label="Select operating location">
-            <button className="location-selected" aria-current="page">
-              <span>01</span><strong>Houston–Galveston</strong><small>Active incident</small>
-            </button>
+            {locationProfiles.map((location) => (
+              <button key={location.id} className={activeLocation.id === location.id ? "location-selected" : ""} aria-current={activeLocation.id === location.id ? "page" : undefined} onClick={() => { setActiveLocationId(location.id); setDecisionOpen(false); setActiveWorkspace("overview"); window.location.hash = "overview"; }}>
+                <span>{location.number}</span><strong>{location.name}</strong><small>{location.readiness === "LIVE" ? "Connected demonstration" : "Synthetic scenario shell"}</small>
+              </button>
+            ))}
           </nav>
-          <small>1 connected location · additional locations will appear here</small>
+          <small>{locationProfiles.length} configured locations · {locationProfiles.filter((location) => location.readiness === "LIVE").length} connected demonstration</small>
         </section>
 
         <header className="room-topbar">
-          <div className="incident-code"><span>{incident.id}</span><i />{incident.status} INCIDENT</div>
-          <div className="classification">{incident.classification}</div>
+          <div className="incident-code"><span>{isLiveLocation ? incident.id : activeLocation.incidentCode}</span><i />{isLiveLocation ? `${incident.status} INCIDENT` : "SCENARIO CONFIGURATION"}</div>
+          <div className="classification">{isLiveLocation ? incident.classification : "SYNTHETIC · NO LIVE CLAIMS"}</div>
         </header>
+
+        {!isLiveLocation && <section className="location-synthetic-panel" aria-label={`${activeLocation.name} configuration`}>
+          <header><div><span className="section-kicker">LOCATION CONFIGURATION FOUNDATION</span><h1>{activeLocation.name}</h1><p>{activeLocation.summary}</p></div><span>SYNTHETIC SCENARIO · NOT CONNECTED</span></header>
+          <div className="location-config-grid">
+            <section><span>OPERATING CONTEXT</span><strong>{activeLocation.region}</strong><p>Approval authority: {activeLocation.approvalRole}</p></section>
+            <section><span>HAZARD PROFILE</span><div>{activeLocation.hazardProfile.map((hazard) => <b key={hazard}>{hazard}</b>)}</div></section>
+            <section><span>EVIDENCE REQUIRED</span><ul>{activeLocation.evidenceRequirements.map((requirement) => <li key={requirement}>{requirement}</li>)}</ul></section>
+            <section><span>ONBOARDING CHECKLIST</span><ul>{activeLocation.onboarding.map((item) => <li key={item.label}><i className={item.state === "READY" ? "config-ready" : ""} />{item.label}<b>{item.state}</b></li>)}</ul></section>
+          </div>
+          <footer>Use this profile for synthetic agent scenarios first. Osprey will not display Houston–Galveston data as if it belongs to this location.</footer>
+        </section>}
 
         {refreshState === "error" && (
           <div className="source-warning" role="status">
@@ -413,8 +430,8 @@ export default function Home() {
 
         <section className="incident-hero overview-only" id="overview">
           <div className="hero-main">
-            <div className="eyebrow-row"><span>TEXAS GULF COAST</span><i />SHARED INCIDENT STATE v{incident.version}</div>
-            <h1>Houston–Galveston Incident Room</h1>
+            <div className="eyebrow-row"><span>{activeLocation.region.toUpperCase()}</span><i />SHARED INCIDENT STATE v{incident.version}</div>
+            <h1>{activeLocation.name} Incident Room</h1>
             <p>One shared operational picture for conditions, infrastructure exposure and governed action.</p>
           </div>
           <div className="hero-state">
@@ -977,7 +994,7 @@ export default function Home() {
 
         <footer className="room-footer">
           <span>OSPREY · AI-NATIVE INCIDENT COMMAND</span>
-          <p>Live environmental data. Representative infrastructure. No real-world action execution.</p>
+          <p>{isLiveLocation ? "Live environmental data. Representative infrastructure. No real-world action execution." : "Synthetic location configuration. No live source, real-world task or external action."}</p>
         </footer>
       </section>
 
