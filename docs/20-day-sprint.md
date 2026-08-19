@@ -1,321 +1,173 @@
-# Osprey 20-day shipping sprint
+# Osprey delivery roadmap
 
-Target: a polished stakeholder demonstration by 5 September 2026.
+Original demonstration target: **5 September 2026**
+Status reviewed: **19 August 2026**
 
-## Sprint outcome
+This roadmap preserves the original 20-day intent but no longer labels a whole
+day “complete” when only its visual or in-memory demonstration exists. Current
+truth is in [`status.md`](status.md); the locked constraints are in
+[`build-principles.md`](build-principles.md).
 
-The demonstration must prove one connected operational journey:
+## Target outcome
 
 ```text
-hazard view -> exposure and forecast query -> evidence graph
--> specialist analysis and challenge -> governed decision packet
--> human approval -> tasks and communications -> outcome measurement
+governed evidence -> deterministic/agent assessment -> challenge
+-> versioned decision packet -> server policy -> authenticated human decision
+-> authorised task/communication -> acknowledgement -> measured outcome
 ```
 
-It must not present eight disconnected feature demos or drift into building a
-general-purpose GIS platform. The locked product boundary is defined in
-[`product-direction.md`](product-direction.md), and the implementation model is
-defined in [`architecture.md`](architecture.md).
+The workflow must remain safe and auditable without a model. No milestone may
+move exact calculations, permissions, approval, durable state, or external
+authority into an LLM.
 
-## Non-negotiable demonstration capabilities
+## Progress summary
+
+| Workstream | Status | Interpretation |
+| --- | --- | --- |
+| Product/safety boundary and command-room shell | Implemented | Product shape, live/demo boundary, responsive UI, map, and representative journey are visible. |
+| Live evidence and spatial intelligence | Partial | Useful public-source integrations and deterministic spatial/risk logic exist; durable connector/evidence contracts and full failure isolation do not. |
+| Shared state and workflow | Partial → designed | Browser state demonstrates the journey; server-owned durable state, workflow history, timers, recovery, and audit are designed. |
+| Decision/approval/task chain | Partial → designed | UI states and representative lineage exist; identity, policy, version-bound approval, persistence, and outbox are designed. |
+| Model specialists, routing, and RAG | Designed | No provider call exists. Gateway, routing, governed retrieval, and structured specialist contracts must precede model use. |
+| Evaluation and autonomy | Designed | One smoke test exists; scenario evaluation and release gates remain to build. |
+| Real external effects and multi-user operations | Future | Explicitly deferred until security, authority, recovery, and evaluation gates pass. |
 
-1. Hazard-specific views with a compound-incident overview.
-2. Map-based exposure queries and time-based forecast exploration.
-3. Visible weather, GIS, asset, and sensor connector health and freshness.
-4. A provenance-rich incident evidence graph with timestamps and versions.
-5. Specialist-agent collaboration, explicit evidence challenge, and a human
-   approval gate.
-6. An actionable decision packet containing options, evidence, uncertainty,
-   trade-offs, authority, and reversible first actions.
-7. Traceable decision-to-task-to-communication-to-outcome lineage.
-8. Baseline-backed measures for response time, decision quality, and operator
-   workload.
+## Days 1–3 — product boundary and vertical slice
 
-## Days 1-3 - Foundation - complete
+Status: **partial**, not blanket complete.
 
-### Day 1 - Product and safety boundary
+Delivered:
+
+- product positioning, command-room visual system, Houston–Galveston scenario,
+  live/demo labels, MapLibre surface, and a representative evidence-to-action
+  journey;
+- repository build and a rendered-HTML smoke test.
+
+Still required before this foundation is complete:
 
-- Establish the repository, quality checks, and private deployment path.
-- Define Osprey as the agentic coordination layer above authoritative source
-  systems, not a replacement GIS or sensor platform.
-- Establish the representative compound-weather incident and simulation
-  boundary.
+- make the 15 Build Principles canonical in review and delivery practice;
+- replace ambiguous “agent/approval/workflow” completion claims with the status
+  ledger;
+- resolve the local/remote repository authority risk in
+  [`repository-governance.md`](repository-governance.md);
+- clear or explicitly accept the lint and bundle-size baselines.
 
-### Day 2 - Domain and interaction contracts
+## Days 4–7 — operational API, durable state, and connectors
 
-- Define incident, hazard, evidence, agent, challenge, decision, approval,
-  task, communication, outcome, and audit vocabulary.
-- Bind source, event time, receipt time, confidence, and version to evidence.
-- Define the evidence-to-decision-to-action interaction journey.
+Status: **partial**.
 
-### Day 3 - Command-room foundation
+Build:
 
-- Establish the Osprey visual language and responsive command-room shell.
-- Demonstrate hazard lenses, connector status, spatial and temporal controls,
-  evidence flow, decision packets, action lineage, and operational measures.
-- Publish the first private stakeholder version.
+1. Move incident commands and workflow-like transitions out of browser state and
+   behind authenticated, versioned Osprey APIs.
+2. Persist incidents, hazards, evidence references, spatial queries, packets,
+   tasks, and append-only audit events.
+3. Formalize connector contracts: schema/version, event/receipt/valid time,
+   source health, freshness, idempotency, timeout, retry, raw snapshot reference,
+   and degraded behaviour.
+4. Save reproducible radius/polygon/asset exposure queries and forecast frames.
+5. Isolate parallel source failures so successful evidence survives a sibling
+   failure.
 
-Exit: Osprey is recognisable, navigable, safe by design, and the complete
-product direction is visible in one representative incident.
+Exit criteria:
 
-## Days 4-7 - Working command room
+- reload/restart does not lose accepted state;
+- stale or failed sources visibly qualify dependent state;
+- spatial results can be reconstructed from versioned inputs;
+- the browser no longer owns authoritative incident transitions.
 
-### Day 4 - Durable incident and hazard workspaces
+## Days 8–12 — deterministic workflow, Evidence Layer, and model gateway
 
-- Add incident creation, selection, status, and durable state.
-- Add configured flood, wind, landslide, and heat workspaces.
-- Preserve a compound-incident view across hazards.
-- Persist the active hazard, operational posture, and incident timeline.
+Status: **designed**.
 
-Acceptance:
+Build in this order:
 
-- An operator can create an incident, add two hazards, switch views, and return
-  without losing state.
-- Hazard views change thresholds, map layers, evidence requirements, and
-  decision context rather than merely changing labels.
+1. Add durable workflow orchestration for stages, activities, timeouts, retries,
+   timers, idempotency, recovery, and audit.
+2. Add the governed Evidence Layer: permissioned/versioned retrieval, source
+   snapshots, citations, freshness, and reproducible retrieval results.
+3. Implement the provider-neutral model gateway and adapters; keep provider SDKs
+   outside workflows and domain contracts.
+4. Establish task/risk/cost routing with a qualified fallback matrix.
+5. Convert specialist roles incrementally from deterministic rules to evaluated,
+   structured model-backed activities where a model adds value.
+6. Represent delegation and disagreement as durable tasks/events.
 
-### Day 5 - Connector contracts and source health
+Exit criteria:
 
-- Implement versioned connector contracts for weather, GIS, asset, and sensor
-  inputs using representative fixtures.
-- Record source event time, Osprey receipt time, freshness, latency, health,
-  errors, and raw-payload references.
-- Make delayed, stale, missing, and failed source states visible.
+- workflows resume without duplicate accepted outputs or effects;
+- workflow progress and policy work with all model providers unavailable;
+- every model result records evidence, citations, assumptions, uncertainty,
+  provider/model/configuration, prompt/routing versions, latency, cost, and error;
+- no unpermissioned or uncited retrieval enters model context;
+- deterministic calculations remain independently testable.
 
-Acceptance:
+## Days 13–16 — server-enforced human authority and simulated execution
 
-- A connector fixture can be ingested idempotently and replayed.
-- A stale or failed source visibly degrades dependent evidence and decisions.
-- No agent can conceal connector failure behind a synthesized summary.
+Status: **designed**.
 
-### Day 6 - Spatial exposure queries
+Build:
 
-- Replace illustrative map behaviour with real map primitives.
-- Support radius, polygon, and asset-selection queries.
-- Join selected areas to representative people, facilities, routes, and owners.
-- Persist query geometry, filters, dataset versions, initiator, and result time.
+1. Freeze decision packets against exact incident/evidence/workflow versions.
+2. Add authenticated roles and deterministic server-side policy evaluation.
+3. Support request-analysis, modify, reject, defer, and approve transitions;
+   modification creates a new packet version.
+4. Invalidate approval after material evidence, action, policy, authority, or
+   expiry change.
+5. Release only approved simulated tasks/messages through an idempotent outbox.
+6. Persist delivery, acknowledgement, retry, failure, compensation, and outcome.
 
-Acceptance:
+Exit criteria:
 
-- An operator can draw or select an area and obtain a reproducible exposure
-  result with provenance.
-- Changing map layers does not lose the selected exposure context.
+- no model or client request can forge approval or bypass policy;
+- a reviewer can reconstruct who approved exactly what and why;
+- restart/retry cannot duplicate a simulated external effect;
+- every downstream record retains authorization lineage.
 
-### Day 7 - Time-based forecasting and operational timeline
+## Days 17–18 — evaluation, security, resilience, and accessibility
 
-- Add forecast frames with issue time, valid time, model, ensemble agreement,
-  units, and confidence.
-- Add a time control that updates impact zones and exposure while preserving
-  incident context.
-- Add evidence detail, filtering, source, freshness, and a change timeline.
+Status: **designed**.
 
-Acceptance:
+Build:
 
-- Moving through forecast time changes the operational picture and can be
-  reconstructed from saved inputs.
-- The operator can distinguish observation time, receipt time, forecast issue
-  time, and forecast valid time.
+- deterministic source/GIS/threshold/permission contract tests;
+- scenario cases for missing/stale evidence, false and missed escalation,
+  disagreement, approval invalidation, provider timeout, invalid model output,
+  retrieval injection, workflow restart, and delivery failure;
+- provider/task qualification with factuality, citation, safety, latency, and
+  cost thresholds;
+- audit reconstruction, secret/data-access, idempotency, keyboard, responsive,
+  loading, empty, and error-state checks;
+- baseline-backed response-time, decision-quality, workload, action, and outcome
+  measures.
 
-Exit: a user can enter an incident, select a hazard, query exposure, move
-through forecast time, and understand the freshness and provenance of the
-operational picture.
+Exit criteria are the gates in [`evaluation.md`](evaluation.md) and
+[`security.md`](security.md), not a successful scripted demo alone.
 
-## Days 8-12 - Evidence and Option A+ intelligence
+## Days 19–20 — evidence-backed demonstration and release
 
-### Day 8 - Incident evidence graph
+Status: **future for the target architecture**. The current vertical slice can
+support a clearly bounded preview.
 
-- Persist source records, evidence, claims, transformations, challenges, and
-  supersessions as a graph.
-- Link every claim to supporting, contradicting, missing, or stale evidence.
-- Keep superseded records reconstructable.
+Build:
 
-Acceptance:
+- freeze representative live/replay fixtures without future-information leak;
+- verify the full degraded and happy paths from evidence to outcome;
+- publish the exact build/deployment provenance and known boundaries;
+- rehearse a journey, not a dashboard tour;
+- publish measured evaluation results and unresolved risks.
 
-- Selecting a claim reveals its full source and transformation chain.
-- Corrected evidence updates downstream state without deleting history.
+Exit:
 
-### Day 9 - Durable specialist-agent workflow
-
-- Introduce the Temporal incident workflow.
-- Add meteorology, infrastructure, community-impact, and operations agents.
-- Require structured outputs with evidence references and disclosed
-  assumptions.
-
-Acceptance:
-
-- Agent work survives interruption and resumes without duplicate accepted
-  findings.
-- Unreferenced model assertions cannot enter accepted incident state.
-
-### Day 10 - Challenge and disagreement
-
-- Add the challenge agent and human-assigned challenges.
-- Represent agent disagreement and unresolved assumptions explicitly.
-- Allow material challenges to block or qualify decisions.
-
-Acceptance:
-
-- A challenger can dispute a claim, request evidence, and record a resolution.
-- An agent cannot close its own material challenge or grant approval.
-
-### Day 11 - Scientific weather-analysis service
-
-- Scaffold the Python analysis service.
-- Process one deterministic NetCDF rainfall fixture.
-- Publish transformation method, source hash, units, geographic scope, valid
-  time, and confidence as structured evidence.
-
-Acceptance:
-
-- The same fixture produces the expected result and provenance record.
-- Unsupported units, missing dimensions, and stale products fail visibly.
-
-### Day 12 - Evidence-to-decision synthesis
-
-- Assemble the active evidence graph into a bounded decision context.
-- Identify supporting, contradicting, stale, missing, and challenged evidence.
-- Generate structured courses of action without granting authority.
-
-Acceptance:
-
-- Every course of action discloses its evidence, assumptions, reversibility,
-  benefit, trade-off, and unresolved challenge.
-
-Exit: scientific and agent findings flow into a shared evidence graph, material
-disagreement is visible, and structured decision options can be generated from
-an exact incident-state version.
-
-## Days 13-16 - Human authority and operational execution
-
-### Day 13 - Governed decision packets
-
-- Create decision packets with question, authority, expiry, options, evidence,
-  uncertainty, challenges, trade-offs, and reversible first actions.
-- Bind the packet to incident, hazard, and evidence-graph versions.
-
-Acceptance:
-
-- An operator can compare options against the same evidence set.
-- New material evidence marks an open packet stale or invalid.
-
-### Day 14 - Human approval and policy
-
-- Add request-analysis, edit, reject, defer, and approve paths.
-- Bind approval to the exact packet and proposed external effects.
-- Enforce authority and unresolved-challenge policy server-side.
-
-Acceptance:
-
-- No consequential action can be released without a named, authorised human.
-- Changing action scope or evidence state invalidates the approval.
-
-### Day 15 - Tasks and communications
-
-- Convert approved actions into owned tasks with deadlines and status.
-- Prepare governed messages for defined audiences.
-- Hold, release, acknowledge, retry, and fail communications explicitly.
-- Use simulated external adapters for the demonstration.
-
-Acceptance:
-
-- Every task and message links to the authorising decision and approval.
-- Failed delivery or rejected ownership appears in the incident thread.
-
-### Day 16 - Outcome tracking and audit reconstruction
-
-- Add acknowledgements, completion, exceptions, and outcome observations.
-- Add a reconstructable audit timeline from source ingestion through outcome.
-- Make simulation and live classifications unavoidable in the interface.
-
-Acceptance:
-
-- A reviewer can reconstruct who knew what, when, why an option was selected,
-  who authorised it, what was released, and what happened next.
-
-Exit: the complete safe decision journey works end to end, with every action
-and outcome retaining its authorisation and evidence lineage.
-
-## Days 17-18 - Evaluation, resilience, and usability
-
-### Day 17 - Operational measurement
-
-- Define baselines and calculation versions for response time, decision
-  quality, and operator workload.
-- Measure signal-to-awareness, awareness-to-decision, decision-to-release, and
-  release-to-acknowledgement intervals.
-- Measure evidence coverage, challenge closure, manual coordination steps, and
-  outcome attainment.
-
-Acceptance:
-
-- Every displayed measure includes its definition, baseline, window, owner,
-  and calculation version.
-- Screen views and chatbot-message counts are not presented as operational
-  outcomes.
-
-### Day 18 - Failure, accessibility, and recovery
-
-- Test stale evidence, unsupported claims, connector failure, agent
-  disagreement, approval expiry, task rejection, and message failure.
-- Test workflow interruption and resumption.
-- Complete accessibility, keyboard, touch, responsive, loading, empty, and
-  error-state checks.
-
-Acceptance:
-
-- The primary journey remains understandable when one connector or agent is
-  unavailable.
-- Every approval and map interaction has a usable keyboard path.
-
-Exit: the primary operational journey is dependable, explainable, measurable,
-and usable under degraded conditions.
-
-## Days 19-20 - Presentation and shipping
-
-### Day 19 - Scenario freeze and rehearsal
-
-- Freeze the representative incident fixtures and expected findings.
-- Verify one flood-led compound incident from source ingestion to outcome.
-- Prepare a 10-15 minute demonstration that follows the operational journey,
-  not a tour of dashboards.
-- Record known boundaries, assumptions, and deferred integrations.
-
-### Day 20 - Final validation and private release
-
-- Run production build, contract tests, safety checks, accessibility checks,
-  and the full demonstration path.
-- Verify every critical interaction and every simulation label.
-- Publish the stakeholder environment privately.
-- Capture the initial response-time, decision-quality, and workload baselines
-  for subsequent iterations.
-
-Exit: a repeatable stakeholder-ready demonstration is live and shows Osprey's
-distinctive value: converting verified operational evidence into challenged,
-human-governed decisions, coordinated actions, and measurable outcomes.
+- build, tests, contract/evaluation/security gates, accessibility, and the
+  repeatable scenario pass;
+- every live/simulated/future boundary remains unambiguous;
+- repository authority and release commit are protected and recoverable.
 
 ## Scope guardrails
 
-The 20-day demonstration will not:
-
-- build a general-purpose GIS, CCTV viewer, sensor platform, or weather model
-- send public warnings or contact emergency services
-- control operational infrastructure
-- permit agents to approve or release their own recommendations
-- claim operational improvement without a defined baseline and measurement
-  window
-
-External effects remain simulated until approval, security, governance,
-connector certification, and evaluation layers are independently validated.
-
-## Definition of done
-
-- All eight locked capabilities appear in one connected incident journey.
-- Evidence and decision state are reconstructable and versioned.
-- Material challenges and stale data affect approval readiness.
-- Human authority controls every consequential external effect.
-- Tasks, communications, acknowledgements, and outcomes retain decision
-  lineage.
-- Response time, decision quality, and operator workload are measured against
-  explicit baselines.
-- The demonstration is accessible, repeatable, private, and clearly labelled
-  as simulated.
+The target demonstration will not build a general GIS/weather/sensor platform,
+send public warnings, contact emergency services, control infrastructure, let a
+model authorize its own recommendation, or claim operational improvement without
+a baseline and method. Real external effects and multi-user operations remain
+future capabilities until independently reviewed gates pass.

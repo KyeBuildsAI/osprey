@@ -1,276 +1,247 @@
 # Osprey architecture
 
-## Architectural intent
+## Architectural doctrine
 
-Osprey is an agentic incident-command and operational-coordination layer. It
-connects authoritative weather, GIS, asset, infrastructure, sensor, field, and
-communications systems, then governs the journey from evidence to decision,
-action, and measured outcome.
+> **Osprey owns the workflow, evidence, state, permissions, and decisions.
+> Models supply bounded intelligence. Humans retain authority. Providers and
+> interfaces remain replaceable.**
 
-Osprey does not replace source GIS, CCTV, weather-model, sensor-management, or
-asset systems. The product boundary and non-negotiable interaction principles
-are defined in [`product-direction.md`](product-direction.md).
+The locked constraints are in [`build-principles.md`](build-principles.md).
+This document separates the verified current runtime from the designed target;
+it must not be read as an implementation claim. Capability status is controlled
+by [`status.md`](status.md).
 
-## Locked capability architecture
+## Verified current runtime — implemented or partial
 
-The architecture must support all eight product capabilities as one connected
-operational thread.
+```text
+Browser command room
+  React state: incident + evidence + packets + approvals + tasks
+  MapLibre: layers + selections + radius/polygon interactions
+                  │
+                  ▼
+Osprey server routes and TypeScript modules
+  public-source fetches + normalisation + deterministic rules
+                  │
+                  ▼
+Read-only public/reference sources
+  NWS · NOAA/NWS water · MRMS · TranStar · USGS · FEMA/H-GAC snapshot
+```
 
-| Product capability | Architectural responsibility |
+The browser is currently more than an operator interface: it owns shared state,
+workflow-like transitions, and representative approval changes. The server
+routes protect provider calls from the browser and normalize useful source data,
+but there is no operational API, durable database, workflow engine, model
+gateway, RAG runtime, authenticated policy service, or external action release.
+This is a deliberate vertical slice and a known boundary violation to remove,
+not the target architecture.
+
+The TypeScript functions labelled as specialist assessments are deterministic
+rules. Calling them “agents” describes a product role, not an LLM implementation.
+
+## Designed target architecture — Option A+
+
+```text
+Operator interfaces
+  ChatGPT Sites today · replaceable/self-hosted UI later
+                         │ versioned Osprey API
+                         ▼
+Operational API and deterministic application core
+  identity · permissions · incident commands · validation · policy
+                         │
+                         ▼
+Durable workflow infrastructure
+  state transitions · retries · timers · approvals · recovery · audit
+             ┌───────────┼────────────┬──────────────┐
+             ▼           ▼            ▼              ▼
+      Evidence Layer  Model gateway  Tool registry  Outbox/adapters
+      retrieval/RAG   routing/adapt. deterministic  approved effects
+             └───────────┼────────────┴──────────────┘
+                         ▼
+Osprey-controlled durable state
+  PostgreSQL/PostGIS · object snapshots · events/receipts · eval records
+```
+
+### 1. Operator interfaces
+
+Interfaces render governed state and send commands to the Osprey API. They do
+not hold secrets, durable state, permission rules, provider adapters, or the
+authoritative workflow. UI hosting can change without changing domain contracts.
+
+### 2. Operational API and application core
+
+The API authenticates actors, authorizes commands, validates versioned schemas,
+and exposes incidents, evidence, proposals, decisions, tasks, and outcomes.
+Domain logic that can be expressed exactly—permissions, thresholds, geography,
+calculations, state transitions—lives in normal code.
+
+### 3. Deterministic workflow infrastructure
+
+The workflow engine is responsible for durable progress, not reasoning. It owns
+allowed stages, activity scheduling, timeouts, retries, idempotency, approval
+waits, invalidation, compensation, recovery, and event emission. A workflow can
+degrade, pause, or continue safely if all model providers are unavailable.
+
+Temporal is the current **designed** implementation choice, not an installed
+dependency or completed capability. A different engine remains acceptable if
+it satisfies the same contracts and recovery guarantees.
+
+### 4. Evidence Layer and governed RAG
+
+The Evidence Layer ingests or references source snapshots, normalises records,
+applies access policy, calculates freshness, and retrieves bounded context.
+Each retrieval result includes source/version identifiers, retrieval time,
+permissions, ranking method, citations, and the exact content supplied to a
+model. Retrieval never promotes a source or model statement into accepted fact.
+
+PostgreSQL/PostGIS, object storage, and pgvector are **designed** components.
+The semantic contract is more important than those particular technologies.
+
+### 5. Model gateway
+
+All model-backed work uses one provider-neutral gateway:
+
+```ts
+type ModelRequest = {
+  requestId: string;
+  taskType: string;
+  riskClass: "routine" | "elevated" | "high";
+  contextRefs: string[];
+  outputSchema: { name: string; version: string };
+  allowedTools: string[];
+  routingPolicyVersion: string;
+  timeoutMs: number;
+};
+
+type ModelResult = {
+  requestId: string;
+  provider: string;
+  model: string;
+  modelConfigVersion: string;
+  output: unknown;
+  citations: string[];
+  assumptions: string[];
+  uncertainties: string[];
+  usage?: { inputTokens?: number; outputTokens?: number; cost?: number };
+  latencyMs: number;
+  status: "succeeded" | "failed" | "timed-out" | "rejected";
+  error?: { code: string; retryable: boolean };
+};
+```
+
+The gateway validates outputs, records receipts, applies task/risk/cost routing,
+and supports evaluated fallbacks. Provider SDK types and prompt formats do not
+cross this boundary. A provider fallback is permitted only when its task-level
+evaluation gate has passed.
+
+### 6. Deterministic tools
+
+Tools answer exact questions such as polygon intersection, distance, elevation,
+threshold crossing, permissions, and state validity. Each tool has a versioned
+input/output schema, authorization scope, timeout, idempotency rule, failure
+contract, and receipt. Models may request an allowed tool; the workflow and
+policy layer decide whether and how it runs.
+
+### 7. Human policy and approval
+
+Approval is a server-side transition, never a model tool. It binds:
+
+- authenticated actor and authority role;
+- exact proposed action and parameters;
+- incident, evidence, retrieval, and workflow versions;
+- open challenges and disclosed uncertainty;
+- policy version, decision time, and expiry conditions.
+
+Material evidence, action, policy, identity, or expiry changes invalidate the
+approval. Only an approved outbox record can reach a consequential adapter.
+
+### 8. Durable state and record types
+
+The canonical model keeps distinct types for:
+
+```text
+SourceSnapshot -> Observation -> DeterministicFinding
+              -> ModelAssessment -> Recommendation/Challenge
+              -> DecisionPacket -> HumanDecision/Approval
+              -> Task/Communication -> ToolReceipt/ActionResult -> Outcome
+```
+
+Every record carries an incident ID, actor or producer, created time, event or
+valid time where relevant, source/parent references, schema version, and mode
+(`live`, `replay`, `simulation`, or `demo`). Accepted state changes only through
+validated commands and durable workflow events.
+
+Specialist delegation is a `Task` or `WorkflowEvent` with requester, purpose,
+inputs, evidence references, status, result, and lineage—not free-form shared
+chat.
+
+## Portable contracts
+
+All trust boundaries use versioned Osprey schemas:
+
+- connector records and source health;
+- evidence, observations, transformations, and retrieval results;
+- workflow commands, events, timers, and errors;
+- model requests/results and structured specialist outputs;
+- tool requests/results and receipts;
+- decision packets, policy evaluations, approvals, and invalidations;
+- tasks, communications, acknowledgements, action results, and outcomes.
+
+Schema evolution must define compatibility and migration. Unknown or invalid
+fields fail closed at authority boundaries; provider-specific data remains in a
+raw envelope or adapter namespace.
+
+## Failure and recovery contract
+
+| Failure | Required behaviour |
 | --- | --- |
-| Hazard-specific operational views | Hazard definitions, thresholds, procedures, map layers, evidence requirements, and decision templates are configuration-backed and versioned. Compound incidents can contain multiple hazard workspaces. |
-| Map-based exposure and time forecasting | PostGIS-backed spatial queries join forecast impact zones to people, places, assets, routes, and responsibilities. Forecast frames retain model, valid-time, issue-time, and confidence metadata. |
-| Operational connectors | Versioned adapters ingest weather, GIS, asset, CCTV metadata, sensor, field, and communication events. Every connector reports health, freshness, latency, and last successful synchronisation. |
-| Incident evidence graph | Evidence, claims, transformations, challenges, supersessions, and decisions form a provenance graph. Every node has source, event time, receipt time, actor, confidence, version, and incident identity. |
-| Agent collaboration and human gates | Durable specialist-agent workflows produce structured proposals. A challenge function tests material assumptions. Deterministic policy and named human authority govern acceptance and consequential action. |
-| Decision packets | A packet binds the incident-state version, decision question, options, supporting and contradicting evidence, uncertainty, challenges, trade-offs, authority, expiry, and reversible first actions. |
-| Tasks, communications, and outcomes | Approved decisions create owned tasks and governed messages. Acknowledgements, completions, exceptions, and outcome observations retain the originating approval lineage. |
-| Operational measurement | An evaluation service records response time, evidence coverage, challenge closure, decision quality, operator workload, action completion, and outcome attainment against explicit baselines. |
+| Source unavailable/stale | Preserve last-known evidence with freshness state; warn operators; block decisions that require current data. |
+| One source fails in a fan-out | Persist other successful receipts; represent the missing dependency; retry independently. |
+| Model timeout/invalid output | Record failure; bounded retry or evaluated fallback; continue deterministic workflow safely. |
+| Retrieval failure/permission denial | Do not substitute model memory; disclose missing context and restrict the decision. |
+| Tool failure | Record input/error/retry state; do not invent a result; compensate or await human direction. |
+| Approval expires or state changes | Invalidate the approval and require review of a new version. |
+| Downstream delivery fails | Retain outbox item and authorization lineage; retry idempotently; expose exception. |
+| Workflow/runtime restart | Resume from durable history without duplicating accepted findings or effects. |
 
-## System context
+The current intelligence route does not yet isolate every parallel source
+failure; this remains a documented gap rather than an implied guarantee.
 
-```text
-Authoritative operational systems
-  Weather models · GIS · Asset registers · CCTV metadata · IoT sensors
-  Field reports · Task systems · Messaging and alerting platforms
-                              │
-                              ▼
-                    Connector and ingestion layer
-             Health · freshness · schema validation · replay
-                              │
-                              ▼
-                Incident store and evidence graph
-       Incidents · hazards · evidence · claims · challenges · versions
-                              │
-                  ┌───────────┴───────────┐
-                  ▼                       ▼
-        Spatial/forecast services   Agent workflow runtime
-        PostGIS · weather analysis  Specialists · challenge · synthesis
-                  └───────────┬───────────┘
-                              ▼
-                    Decision packet service
-             Options · trade-offs · authority · expiry · policy
-                              │
-                              ▼
-                       Human approval gate
-                              │
-                              ▼
-             Tasks · communications · acknowledgements
-                              │
-                              ▼
-                  Outcomes and evaluation service
-                              │
-                              ▼
-                    Shared Osprey command room
-```
+## Reproducibility and observability
 
-## Target Option A+ topology
+A consequential record must identify evidence/snapshot versions, retrieval
+result, workflow build, model/provider/configuration, prompt and policy version,
+tool receipts, actor decision, and output/action payload. Correlation IDs connect
+the chain. Logs and traces assist diagnosis but do not replace durable audit
+records.
 
-1. The TypeScript web application presents the shared command room, hazard
-   workspaces, evidence graph, decision packets, action lineage, and outcome
-   measures.
-2. The operational API owns identity, permissions, incidents, connectors,
-   evidence, claims, challenges, decisions, approvals, tasks, communications,
-   outcomes, and audit events.
-3. Temporal owns durable, long-running connector, incident, agent, challenge,
-   approval-expiry, task, acknowledgement, and evaluation workflows.
-4. PostgreSQL is the transactional source of truth. PostGIS stores operational
-   geography and exposure relationships; pgvector supports bounded retrieval.
-5. Python weather-analysis services transform NetCDF, GRIB, radar, satellite,
-   and ensemble products into structured, provenance-rich forecast evidence.
-6. Object storage holds immutable raw inputs and derived scientific products.
-7. An outbox-driven integration layer releases approved tasks and messages and
-   records acknowledgements without losing the authorising decision lineage.
-8. An evaluation service calculates operational measures against versioned
-   baselines and publishes the method with every result.
+## Security invariants
 
-## Core domain objects
+- Secrets and provider calls remain server-side.
+- Least privilege and explicit authorization apply at every adapter.
+- Models and retrieved documents are untrusted inputs, not authorities.
+- Prompt injection cannot widen tool, data, or approval permissions.
+- Consequential effects require an authenticated, policy-valid human approval.
+- Demo and live records cannot be silently mixed.
 
-### Incident and hazard
+The complete control model is in [`security.md`](security.md).
 
-- Incident
-- HazardWorkspace
-- HazardDefinition
-- OperationalThreshold
-- ForecastFrame
-- ExposureQuery
-- ImpactZone
+## Deployment portability
 
-### Sources and evidence
+ChatGPT Sites/Cloudflare is the current UI and route runtime. The target keeps
+interfaces, APIs, workflows, persistence, retrieval, and model providers
+separable so any one can move without rewriting the domain. Postgres, Temporal,
+pgvector, or a named model provider are replaceable implementation decisions,
+not Osprey's identity.
 
-- Connector
-- ConnectorRun
-- SourceRecord
-- Evidence
-- Claim
-- Transformation
-- Challenge
-- Supersession
+## Architecture gates
 
-### Agents and authority
+1. Move incident commands and state transitions behind the operational API.
+2. Add versioned durable state and append-only audit/event records.
+3. Introduce workflow recovery and server-side approval policy before any
+   consequential adapter.
+4. Add the provider-neutral model gateway before the first model-backed role.
+5. Add governed retrieval before any role depends on procedures or documents.
+6. Pass task-level evaluation and degraded-mode tests before changing autonomy.
 
-- Actor
-- SpecialistAgent
-- AgentRun
-- Recommendation
-- CourseOfAction
-- DecisionPacket
-- Decision
-- Approval
-- PolicyEvaluation
-
-### Action and measurement
-
-- Task
-- Communication
-- Acknowledgement
-- OutcomeObservation
-- OperationalBaseline
-- OperationalMeasure
-- AuditEvent
-
-Every durable record carries an incident identifier, actor identity, creation
-time, event or valid time where relevant, source or parent relationship,
-version, and classification between demonstration and live operation.
-
-## Evidence graph requirements
-
-The evidence graph is part of accepted incident state, not an optional visual.
-
-- Raw source records are immutable and content-addressed where practical.
-- Evidence records reference the source connector, source identifier, event
-  timestamp, Osprey receipt timestamp, transformation, geographic scope, and
-  freshness state.
-- Claims identify supporting, contradicting, and missing evidence.
-- Challenges identify the assumption under review, owner, severity, status,
-  resolution, and downstream decisions they block or qualify.
-- Superseded evidence remains reconstructable and never disappears from audit.
-- Decision packets bind to an exact graph and incident-state version.
-- New or corrected evidence can expire or invalidate a pending packet.
-
-## Spatial and forecast model
-
-- Hazard views request only the spatial layers and operational attributes
-  relevant to their configured decision journey.
-- Exposure queries support radius, polygon, asset, route, and administrative
-  boundary selection.
-- Query results retain the geometry, dataset versions, time window, filters,
-  and user or agent that initiated the query.
-- Forecast frames distinguish issue time, valid time, model, ensemble member,
-  confidence, units, and geographic resolution.
-- Moving the forecast time must preserve the active hazard, map selection,
-  exposed assets, and decision context.
-- Scientific transformations publish their method and source product hashes.
-
-## Connector contract
-
-Each connector implements:
-
-- schema and semantic version
-- authentication and least-privilege scope
-- poll, stream, webhook, or batch ingestion mode
-- source event time and Osprey receipt time
-- health, freshness, latency, and error state
-- idempotency and deduplication key
-- replay and backfill behaviour
-- geographic and organisational scope
-- source terms, classification, and retention policy
-- raw-payload reference and normalised-record output
-
-Connector failure must degrade visibly. It must not silently present stale data
-as current or allow model synthesis to conceal missing authoritative input.
-
-## Agent collaboration and challenge
-
-Agents produce proposals rather than accepted truth:
-
-- observations
-- evidence candidates
-- claims
-- challenges
-- recommendations
-- courses of action
-- requests for additional data or human input
-
-The incident workflow coordinates specialist work, exposes disagreement, and
-assigns challenge ownership. Deterministic policy and human decisions promote
-proposals into accepted incident state. Agents cannot silently rewrite accepted
-facts, close their own material challenge, or grant themselves authority.
-
-## Decision packet and human gate
-
-A decision packet contains:
-
-- the decision question and accountable authority
-- incident, hazard, and evidence-graph versions
-- time window and expiry conditions
-- options, assumptions, benefits, trade-offs, and reversibility
-- supporting, contradicting, missing, stale, and challenged evidence
-- agent recommendations and disclosed disagreements
-- proposed tasks, communications, owners, and outcome checks
-- policy evaluation and required approvals
-
-Approval is bound to a specific packet payload and incident-state version. If
-material evidence, authority, action scope, or expiry changes, the approval is
-invalidated and must be reconsidered.
-
-## Decision-to-outcome lineage
-
-An approved decision creates one traceable operational thread:
-
-```text
-DecisionPacket -> Approval -> Decision -> Task / Communication
-              -> Acknowledgement -> Completion / Exception
-              -> OutcomeObservation -> OperationalMeasure
-```
-
-External systems may execute tasks or deliver messages, but Osprey retains the
-authorising payload, recipient or owner, release time, acknowledgement,
-exception, completion, and outcome reference.
-
-## Operational measurement
-
-The initial measurement set is:
-
-- **Response time:** signal-to-awareness, awareness-to-decision,
-  decision-to-release, release-to-acknowledgement, and release-to-completion.
-- **Decision quality:** evidence coverage, source diversity, freshness,
-  challenge closure, assumption disclosure, policy compliance, reversibility,
-  and post-incident outcome review.
-- **Operator workload:** manual coordination steps, duplicate data entry,
-  unresolved decisions, alerts requiring review, handoffs, and time on task.
-- **Action performance:** ownership acceptance, acknowledgement, completion,
-  exception rate, and deadline attainment.
-- **Outcome attainment:** the incident-specific safety or continuity outcome
-  attached to the decision packet.
-
-Every reported measure includes its definition, baseline, measurement window,
-sample, owner, and calculation version. Interface usage and chatbot message
-counts are diagnostics, not operational outcomes.
-
-## Safety invariants
-
-- Read-only tools are the default.
-- Consequential tools require explicit server-side policy checks.
-- Approval is bound to a specific action payload and incident-state version.
-- Changed evidence can invalidate a pending approval.
-- Unresolved material challenges can block or qualify approval.
-- Tool inputs, outputs, failures, retries, tasks, messages, and acknowledgements
-  are auditable.
-- Model text alone cannot grant authority.
-- Connector health and evidence freshness are visible to operators.
-- A decision and every downstream effect retain one authorisation lineage.
-- Operational measures include an explicit baseline and measurement window.
-- Demo, simulation, training, and live actions are visibly distinguished.
-
-## Current implementation boundary
-
-The current slice is frontend-led and uses typed representative incident data.
-It demonstrates the complete product direction through hazard lenses, connector
-status, spatial exposure tools, forecast-time controls, provenance-rich
-evidence, collaborative agents, an explicit challenge, governed decision
-packets, human gates, decision-to-outcome lineage, and operational measurement.
-
-Persistence, live connectors, GIS execution, durable orchestration, scientific
-analysis, external tasks and communications, policy enforcement, and measured
-production outcomes remain later implementation milestones.
+See [`workflows.md`](workflows.md), [`evaluation.md`](evaluation.md), and
+[`20-day-sprint.md`](20-day-sprint.md) for the executable contracts and sequence.

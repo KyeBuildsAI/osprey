@@ -1,49 +1,87 @@
 # Osprey
 
-An evidence-led, agentic incident-command layer for extreme-weather operations.
+An evidence-led incident-command and operational-coordination layer for
+extreme-weather operations.
 
-Osprey helps specialist agents and human incident commanders build a shared
-operational picture, challenge uncertain evidence, compare courses of action,
-and retain human approval over consequential decisions.
+> **Osprey owns the workflow, evidence, state, permissions, and decisions.
+> Models supply bounded intelligence. Humans retain authority. Providers and
+> interfaces remain replaceable.**
 
-Its locked product direction is to connect existing operational systems and
-govern the journey from evidence to decision to action and outcome. It is not a
-replacement GIS or another collection of disaster dashboards. See
-[`docs/product-direction.md`](docs/product-direction.md).
+Osprey connects authoritative weather, geospatial, infrastructure, and
+operational systems. It is not a replacement GIS, autonomous incident
+commander, or collection of prompts.
 
-## Current milestone
+## Current build
 
-The repository contains Osprey's first working incident-room spine:
+The local deployable tree contains a working Houston–Galveston vertical slice:
 
-- live Houston–Galveston observations, forecast and alerts from the US National Weather Service
-- an interactive MapLibre operational map with live NWS GeoJSON warning polygons
-- geocoded representative assets, real radius/polygon queries and USGS 3DEP elevation samples
-- a normalized internal weather contract that isolates the interface from the NWS schema
-- Weather, Infrastructure, Operations and Communications assessments over one shared incident state
-- evidence references, confidence, representative critical assets and an incident timeline
-- a manual live-intelligence refresh and visible source/demo boundaries
+- live/read-only NWS weather and alert data, water observations, MRMS rainfall,
+  TranStar impacts, USGS elevation, and FEMA/H-GAC flood context;
+- a MapLibre operational map with warning geometry, source health, spatial
+  selections, representative critical assets, and deterministic exposure/risk
+  logic;
+- evidence references, specialist-role views, representative decision packets,
+  approvals, tasks, and an incident timeline.
 
-The weather and warning geometry are live. Elevation values are sampled and
-cached from USGS 3DEP because terrain height is stable and should not delay an
-operator refresh. The infrastructure register and all proposed decisions remain
-representative demonstration data; Osprey releases no external effects.
+Important boundary: the specialist assessments are deterministic TypeScript
+rules, not model-backed agents. Shared incident state, approvals, tasks, and
+workflow transitions are browser-local demonstrations. There is no durable
+workflow engine, operational database, model gateway, governed RAG runtime,
+authenticated approval policy, external action release, replay engine, or
+scenario evaluation harness yet. No external operational effect is produced.
 
-## Documentation
+See [`docs/status.md`](docs/status.md) for the authoritative, evidence-based
+capability ledger.
 
-- [`docs/product-direction.md`](docs/product-direction.md) is the authoritative
-  product boundary, interaction model, and set of eight locked design
-  principles.
-- [`docs/architecture.md`](docs/architecture.md) maps every locked principle to
-  services, data contracts, workflows, safety invariants, and operational
-  measurement.
-- [`docs/20-day-sprint.md`](docs/20-day-sprint.md) turns the same principles into
-  daily deliverables, acceptance criteria, scope guardrails, and a definition
-  of done.
+## Build Principles
 
-When implementation or delivery decisions conflict with these documents,
-`product-direction.md` governs the product intent, `architecture.md` governs
-the technical boundary, and `20-day-sprint.md` governs the current delivery
-sequence.
+The 15 locked [`Osprey Build Principles`](docs/build-principles.md) require:
+
+- a replaceable UI over Osprey-owned APIs and durable state;
+- deterministic workflow, policy, tools, failure handling, and audit;
+- one provider-neutral model gateway with task/risk/cost routing;
+- governed, permissioned, versioned evidence retrieval—not model memory;
+- authenticated human approval outside every model;
+- portable contracts, reproducible consequential outputs, and evaluation before
+  autonomy.
+
+## Documentation map
+
+- [`docs/build-principles.md`](docs/build-principles.md) — locked engineering
+  constraints and conformance rule.
+- [`docs/product-direction.md`](docs/product-direction.md) — product boundary,
+  capabilities, interaction model, and guardrails.
+- [`docs/architecture.md`](docs/architecture.md) — verified current runtime and
+  designed target architecture/contracts.
+- [`docs/status.md`](docs/status.md) — authoritative implementation-status
+  vocabulary and capability ledger.
+- [`docs/workflows.md`](docs/workflows.md) — deterministic workflow, specialist
+  delegation, approval, retry, and audit contracts.
+- [`docs/security.md`](docs/security.md) — identity, secrets, model/RAG/tool trust
+  boundaries, human authority, and release gates.
+- [`docs/evaluation.md`](docs/evaluation.md) — task/provider qualification,
+  scenario measures, and autonomy gates.
+- [`docs/development-guidance.md`](docs/development-guidance.md) — contributor
+  checklist and code-placement rules.
+- [`docs/approvals-ux.md`](docs/approvals-ux.md) — current approval interface and
+  designed authorization contract.
+- [`docs/design-decisions.md`](docs/design-decisions.md) — status-aware product
+  and architecture decision register.
+- [`docs/20-day-sprint.md`](docs/20-day-sprint.md) — status-corrected delivery
+  roadmap.
+- [`docs/repository-governance.md`](docs/repository-governance.md) — active
+  local/remote source-of-truth risk and safe operating rules.
+
+If documents conflict about what exists, `docs/status.md` controls. A roadmap or
+target diagram never upgrades an implementation status.
+
+## Repository-control warning
+
+Local `main` and `origin/main` diverged after shared commit `0d91f96`. The local
+line contains the deployable application; the current remote-tracking line is a
+different documentation-heavy tree. Do not assume a routine pull, merge, or
+fresh clone preserves the deployable truth. See the governance document before
+any history operation.
 
 ## Development
 
@@ -52,8 +90,12 @@ npm install
 npm run dev
 ```
 
-Run the production checks with:
+Production build and smoke test:
 
 ```bash
 npm test
 ```
+
+Lint is currently a known failing baseline because two existing handlers in
+`app/page.tsx` are unused. This documentation update does not alter application
+code or claim that failure is resolved.
