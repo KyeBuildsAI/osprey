@@ -1,9 +1,11 @@
 # Capability status ledger
 
 Snapshot date: **19 August 2026**
-Evidence basis: local deployable tree at `a6338f2`, including the uncommitted,
-user-owned `lib/locations.ts` change. This file reports what the inspected code
-demonstrates; it does not certify production readiness.
+Evidence basis: authoritative `main` at `b59d0c1`; its application tree derives
+from deployed commit `a6338f2`. The separate uncommitted, user-owned
+`lib/locations.ts` change is not part of `main` or the live deployment. This file
+reports what the inspected code demonstrates; it does not certify production
+readiness.
 
 ## Status vocabulary
 

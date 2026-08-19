@@ -1,57 +1,72 @@
-# Repository governance and source-of-truth risk
+# Repository governance and source-of-truth resolution
 
-Status: **active unresolved risk** as of 19 August 2026.
+Status: **resolved and protected** as of 19 August 2026.
 
-## Verified divergence
+## Historical risk
 
-The local deployable branch and `origin/main` share commit `0d91f96`, then
-diverge:
+After shared commit `0d91f96`, the repository split into two histories:
 
-- local `main` at `a6338f2` is 30 commits ahead of the shared base and contains
-  the application, live/read-only connectors, map, tests, and current local
-  documentation;
-- `origin/main` at `4d99317` is three different commits ahead of the shared base
-  and contains a documentation-heavy tree that removes the deployable
-  application. Its two newest commits add an approval UX specification and the
-  associated design-decision entry.
+- the deployable application line reached `a6338f2` through 30 application and
+  product commits;
+- the former remote `main` reached `4d99317` through three documentation-only
+  commits and no longer contained the application tree.
 
-Therefore neither a routine pull/merge nor a fresh clone of remote `main` can be
-assumed to preserve or reveal the deployable truth. The current remote tracking
-ref was refreshed on 19 August 2026; it may change again after that observation.
-
-The useful approval material has been intentionally adapted into
+That split made ordinary pulls, merges, and fresh clones misleading. The useful
+remote approval material was intentionally adapted into
 [`approvals-ux.md`](approvals-ux.md) and
-[`design-decisions.md`](design-decisions.md) on the reconciliation branch. That
-content transfer does not make a tree-level merge safe.
+[`design-decisions.md`](design-decisions.md), alongside the consolidated
+architecture documentation.
 
-## Immediate operating rules
+## Resolution record
 
-- Do not run a routine pull, merge, rebase, force-push, or branch deletion as a
-  housekeeping action.
-- Do not treat `origin/main` as the application source of truth or the local
-  branch as safely backed up until authority is explicitly chosen.
-- Before any history operation, capture both commit IDs, inspect the full graph
-  and tree diff, preserve uncommitted work, and create recoverable references.
-- Deployments must record the exact commit/tree or artifact digest used.
-- Documentation must name whether it describes the local deployable tree, the
-  remote documentation branch, or a reconciled successor.
+- Reconciliation documentation commit: `c59e703`.
+- Two-parent history reconciliation commit: `2fb790d`, retaining the deployable
+  and documentation-only histories without accepting the remote tree deletion.
+- Reviewed draft PR: `#1`, **Reconcile Osprey application and documentation
+  history**.
+- Authoritative merge commit on `main`: `b59d0c1`.
+- Application tree: the tested deployable line derived from `a6338f2`.
+- Documentation tree: the status-aware consolidated documents in this branch.
 
-## Resolution decision required
+Both `a6338f2` and `4d99317` are ancestors of authoritative `main`. A fresh clone
+of `main` therefore contains the application and preserves both histories.
 
-The owner must choose and record one authoritative history. A safe reconciliation
-plan should preserve both lines, review the remote documents for useful content,
-integrate them intentionally into the deployable tree, verify the resulting
-application, and only then update the protected default branch. The exact Git
-method is deliberately not prescribed here because it depends on ownership,
-remote state, backup, and review decisions outside this documentation task.
+## Effective protection
 
-## Protection after reconciliation
+GitHub branch protection on `main` now:
 
-- Protect the authoritative default branch and require reviewed changes.
-- Require build/test and documentation-status checks.
-- Prevent force pushes and accidental deletion.
-- Tag or otherwise retain the last known deployable and documentation-only
-  histories.
-- Document deployment provenance and a recovery procedure.
+- requires changes to pass through a pull request;
+- applies protection to administrators;
+- requires review conversations to be resolved;
+- blocks force pushes;
+- blocks deletion of `main`.
 
-This risk is not resolved by the present documentation changes.
+No status check is required yet because the repository has no configured CI
+workflow. Adding a build/test workflow and making it required is the next
+repository-control improvement.
+
+## Continuing operating rules
+
+- Treat `main` as the sole authoritative development history.
+- Record the exact commit or artifact digest for every deployment.
+- Do not bypass protection or recreate a parallel documentation-only default
+  branch.
+- Update code, status, architecture, and roadmap claims in the same reviewed
+  change when capability maturity changes.
+- Retain safety references until the owner confirms independent backup and
+  recovery procedures.
+- Keep uncommitted work out of repository reconciliation commits.
+
+## Preserved local exception
+
+The richer `lib/locations.ts` working-tree edit remains separate from `main` and
+the deployment. It was preserved as Git object
+`f4db300e5374c1ca0eff9adf2bae641dd06313b4` and must receive its own product and
+implementation review before publication.
+
+## Remaining controls
+
+- Add CI for build, test, lint, documentation links, and dependency audit.
+- Resolve the two existing lint errors before making lint a required check.
+- Triage the dependency-audit baseline before production use.
+- Document deployment promotion and rollback from authoritative commits.
