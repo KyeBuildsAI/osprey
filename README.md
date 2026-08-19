@@ -69,19 +69,19 @@ The 15 locked [`Osprey Build Principles`](docs/build-principles.md) require:
   and architecture decision register.
 - [`docs/20-day-sprint.md`](docs/20-day-sprint.md) — status-corrected delivery
   roadmap.
-- [`docs/repository-governance.md`](docs/repository-governance.md) — active
-  local/remote source-of-truth risk and safe operating rules.
+- [`docs/repository-governance.md`](docs/repository-governance.md) — resolved
+  source-of-truth split, branch protection, and continuing operating rules.
 
 If documents conflict about what exists, `docs/status.md` controls. A roadmap or
 target diagram never upgrades an implementation status.
 
-## Repository-control warning
+## Repository control
 
-Local `main` and `origin/main` diverged after shared commit `0d91f96`. The local
-line contains the deployable application; the current remote-tracking line is a
-different documentation-heavy tree. Do not assume a routine pull, merge, or
-fresh clone preserves the deployable truth. See the governance document before
-any history operation.
+The earlier local/deployed versus documentation-only `main` split was reconciled
+through PR #1. Authoritative `main` at `b59d0c1` preserves both histories and
+uses the deployable application tree with consolidated documentation. Pull
+requests are required; force pushes and branch deletion are disabled. See the
+governance document for provenance and continuing safeguards.
 
 ## Development
 
