@@ -78,8 +78,9 @@ target diagram never upgrades an implementation status.
 ## Repository control
 
 The earlier local/deployed versus documentation-only `main` split was reconciled
-through PR #1. Authoritative `main` at `b59d0c1` preserves both histories and
-uses the deployable application tree with consolidated documentation. Pull
+through PR #1. Reconciliation baseline `b59d0c1` preserves both histories, and
+protected `main` uses the deployable application tree with consolidated
+documentation. Pull
 requests are required; force pushes and branch deletion are disabled. See the
 governance document for provenance and continuing safeguards.
 
